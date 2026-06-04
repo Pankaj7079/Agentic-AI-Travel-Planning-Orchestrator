@@ -1,125 +1,81 @@
-# PariKrama Development Environment
-# Usage: docker compose -f infra/docker/docker-compose.yml up -d
-
-name: parikrama
+version: '3.8'
 
 services:
-  # ── PostgreSQL 16 with pgvector ──────────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: parikrama-postgres
-    restart: unless-stopped
+    environment:
+      POSTGRES_USER: parikrama
+      POSTGRES_PASSWORD: parikrama_dev_2024
+      POSTGRES_DB: parikrama
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-parikrama}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parikrama_dev_2024}
-      POSTGRES_DB: ${POSTGRES_DB:-parikrama}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U parikrama"]
+      test: ["CMD-SHELL", "pg_isready -U parikrama -d parikrama"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # ── Redis 7 (cache + Celery broker) ─────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: parikrama-redis
-    restart: unless-stopped
     ports:
       - "6379:6379"
-    command: redis-server /usr/local/etc/redis/redis.conf
     volumes:
       - redis_data:/data
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
 
-  # ── MinIO (S3-compatible object storage) ────────────────────────────
   minio:
-    image: minio/minio:latest
-    container_name: parikrama-minio
-    restart: unless-stopped
+    image: minio/minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
     ports:
       - "9000:9000"
       - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
-    command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
+    command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── MinIO bucket initializer (one-shot) ──────────────────────────────
-  minio-init:
-    image: minio/mc:latest
-    container_name: parikrama-minio-init
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set parikrama http://minio:9000 minioadmin minioadmin123;
-      mc mb --ignore-existing parikrama/documents;
-      mc mb --ignore-existing parikrama/exports;
-      mc mb --ignore-existing parikrama/voice-recordings;
-      mc mb --ignore-existing parikrama/backups;
-      echo 'Buckets created successfully';
-      exit 0;
-      "
-
-  # ── LiveKit Server (WebRTC for voice) ───────────────────────────────
   livekit:
     image: livekit/livekit-server:latest
-    container_name: parikrama-livekit
-    restart: unless-stopped
     ports:
       - "7880:7880"
       - "7881:7881"
       - "7882:7882/udp"
     volumes:
-      - ./livekit/livekit.yaml:/etc/livekit.yaml
-    command: --config /etc/livekit.yaml --dev
+      - ./livekit/livekit.yaml:/livekit.yaml
+    command: --config /livekit.yaml --dev
 
-  # ── Prometheus (metrics) ────────────────────────────────────────────
   prometheus:
-    image: prom/prometheus:latest
-    container_name: parikrama-prometheus
-    restart: unless-stopped
+    image: prom/prometheus
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=30d'
 
-  # ── Grafana (dashboards) ────────────────────────────────────────────
   grafana:
-    image: grafana/grafana:latest
-    container_name: parikrama-grafana
-    restart: unless-stopped
+    image: grafana/grafana
     ports:
       - "3001:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
-      - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:
       - prometheus
 

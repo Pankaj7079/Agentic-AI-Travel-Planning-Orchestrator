@@ -1,8 +1,5 @@
 """
 Custom exception hierarchy for clean error handling.
-
-Each exception maps to an HTTP status code. The exception handler
-catches these and returns proper JSON error responses.
 """
 
 from fastapi import FastAPI, Request

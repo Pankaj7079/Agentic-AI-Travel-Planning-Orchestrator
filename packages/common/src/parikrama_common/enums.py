@@ -74,3 +74,57 @@ class LLMProvider(StrEnum):
     GEMINI = "gemini"
     GROQ_LLAMA = "groq_llama"
     GROQ_MIXTRAL = "groq_mixtral"
+
+
+class TransportType(StrEnum):
+    """
+    Supported transport modes for Indian travel.
+
+    The booking agent searches across all three types and
+    returns options sorted by value-for-money.
+    """
+
+    BUS = "bus"  # Volvo, sleeper, semi-sleeper (RedBus, AbhiBus)
+    TRAIN = "train"  # IRCTC classes: SL, 3A, 2A, 1A, CC
+    FLIGHT = "flight"  # Domestic airlines (IndiGo, SpiceJet, etc.)
+
+
+class TransportClass(StrEnum):
+    """
+    Sub-classes within each transport type.
+
+    Used by the booking agent to match user's budget tier.
+    """
+
+    # Bus classes
+    BUS_ORDINARY = "ordinary"
+    BUS_SEMI_SLEEPER = "semi_sleeper"
+    BUS_SLEEPER = "sleeper"
+    BUS_VOLVO_AC = "volvo_ac"
+    BUS_LUXURY = "luxury"
+
+    # Train classes (IRCTC)
+    TRAIN_GENERAL = "general"  # GN — unreserved
+    TRAIN_SLEEPER = "sleeper"  # SL
+    TRAIN_AC_3TIER = "ac_3tier"  # 3A
+    TRAIN_AC_2TIER = "ac_2tier"  # 2A
+    TRAIN_AC_FIRST = "ac_first"  # 1A
+    TRAIN_AC_CHAIR = "ac_chair"  # CC
+
+    # Flight classes
+    FLIGHT_ECONOMY = "economy"
+    FLIGHT_BUSINESS = "business"
+
+
+class UserRole(StrEnum):
+    """User roles for authorization."""
+
+    USER = "user"
+    ADMIN = "admin"
+
+
+class AuthProvider(StrEnum):
+    """Authentication provider types."""
+
+    LOCAL = "local"  # email + password
+    GOOGLE = "google"  # Google OAuth

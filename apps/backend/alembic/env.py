@@ -8,11 +8,10 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from parikrama.config import settings
-from parikrama.models.base import Base
 
 # import all models so Alembic sees them for autogenerate
-# add new model imports here as they're created in later phases
-# from parikrama.models import user, trip, document  # noqa: F401
+from parikrama.models import cost, document, trip, user  # noqa: F401
+from parikrama.models.base import Base
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
@@ -24,7 +23,6 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    """Generate SQL without connecting to the database."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -43,7 +41,6 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations() -> None:
-    """Run migrations with an async engine."""
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -55,7 +52,6 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in online mode."""
     asyncio.run(run_async_migrations())
 
 

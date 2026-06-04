@@ -10,7 +10,7 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from parikrama.config import settings
 from parikrama.db.session import get_db
@@ -26,10 +26,13 @@ def event_loop():
     loop.close()
 
 
+from sqlalchemy.pool import NullPool
+
+
 @pytest_asyncio.fixture(scope="session")
 async def test_engine():
     """Create a test database engine."""
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    engine = create_async_engine(settings.DATABASE_URL, echo=False, poolclass=NullPool)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
@@ -41,10 +44,17 @@ async def test_engine():
 @pytest_asyncio.fixture
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     """Provide a transactional database session that rolls back after each test."""
-    session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
-    async with session_factory() as session:
-        yield session
-        await session.rollback()
+    connection = await test_engine.connect()
+    transaction = await connection.begin()
+    session = AsyncSession(
+        bind=connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    )
+
+    yield session
+
+    await session.close()
+    await transaction.rollback()
+    await connection.close()
 
 
 @pytest_asyncio.fixture

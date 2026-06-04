@@ -50,23 +50,19 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # -- OAuth Google --
+    # -- Google OAuth --
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
 
-    # -- LLM: Gemini (primary) --
+    # -- LLM --
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash-lite"
     GEMINI_TIMEOUT_SECONDS: int = 30
-
-    # -- LLM: Groq (fallback) --
     GROQ_API_KEY: str = ""
     GROQ_PRIMARY_MODEL: str = "llama-3.1-70b-versatile"
     GROQ_SECONDARY_MODEL: str = "mixtral-8x7b-32768"
     GROQ_TIMEOUT_SECONDS: int = 15
-
-    # -- LLM Router thresholds --
     LLM_FALLBACK_LATENCY_THRESHOLD_MS: int = 10000
     LLM_FALLBACK_ERROR_THRESHOLD: int = 3
     LLM_FALLBACK_ERROR_WINDOW_SECONDS: int = 60
@@ -84,7 +80,6 @@ class Settings(BaseSettings):
     # -- Notifications --
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "noreply@parikrama.dev"
-    FCM_CREDENTIALS_PATH: str = ""
 
     # -- Monitoring --
     LANGCHAIN_TRACING_V2: bool = False
@@ -96,7 +91,6 @@ class Settings(BaseSettings):
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors(cls, v: str | list[str]) -> list[str]:
-        """Accept comma-separated string or JSON list."""
         if isinstance(v, str):
             try:
                 return json.loads(v)
@@ -105,5 +99,4 @@ class Settings(BaseSettings):
         return v
 
 
-# singleton imported everywhere
 settings = Settings()  # type: ignore[call-arg]

@@ -1,7 +1,5 @@
 """
 Celery application configuration.
-
-Central broker (Redis), task discovery, and beat schedule.
 """
 
 import os
@@ -11,11 +9,20 @@ from celery.schedules import crontab
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-celery_app = Celery(
-    "parikrama",
-    broker=REDIS_URL,
-    backend=REDIS_URL,
-)
+from celery.signals import setup_logging as celery_setup_logging
+
+
+@celery_setup_logging.connect
+def configure_celery_logging(**kwargs):
+    try:
+        from parikrama.core.logger import setup_logging
+
+        setup_logging(log_name="worker")
+    except ImportError:
+        pass  # Fails gracefully if backend isn't in Python path
+
+
+celery_app = Celery("parikrama", broker=REDIS_URL, backend=REDIS_URL)
 
 celery_app.conf.update(
     task_serializer="json",
@@ -24,24 +31,23 @@ celery_app.conf.update(
     timezone="Asia/Kolkata",
     enable_utc=True,
     task_track_started=True,
-    task_time_limit=600,           # 10 min hard limit
-    task_soft_time_limit=540,      # 9 min soft limit
-    worker_prefetch_multiplier=1,  # fair scheduling
+    task_time_limit=600,
+    task_soft_time_limit=540,
+    worker_prefetch_multiplier=1,
     task_routes={
         "parikrama_worker.tasks.document_tasks.*": {"queue": "documents"},
         "parikrama_worker.tasks.embedding_tasks.*": {"queue": "embeddings"},
         "parikrama_worker.tasks.email_tasks.*": {"queue": "notifications"},
         "parikrama_worker.tasks.cleanup_tasks.*": {"queue": "default"},
+        "parikrama_worker.tasks.trip_tasks.*": {"queue": "trips"},
     },
 )
 
-# auto-discover tasks from the tasks package
 celery_app.autodiscover_tasks(["parikrama_worker.tasks"])
 
-# beat schedule — recurring tasks
 celery_app.conf.beat_schedule = {
     "expire-pending-approvals": {
         "task": "parikrama_worker.tasks.cleanup_tasks.expire_pending_approvals",
-        "schedule": crontab(minute="*/5"),  # every 5 minutes
+        "schedule": crontab(minute="*/5"),
     },
 }

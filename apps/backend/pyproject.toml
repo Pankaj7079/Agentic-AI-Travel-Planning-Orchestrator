@@ -19,6 +19,7 @@ dependencies = [
     # -- Validation & Config --
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
+    "email-validator>=2.1",
 
     # -- Auth & Security --
     "python-jose[cryptography]>=3.3",
@@ -29,18 +30,20 @@ dependencies = [
     "redis>=5.0",
     "minio>=7.2",
 
+    # -- HTTP Client --
+    "httpx>=0.27",
+
     # -- Monitoring --
     "prometheus-client>=0.20",
     "sentry-sdk[fastapi]>=2.5",
     "structlog>=24.1",
 
-    # -- Shared --
-    "parikrama-common",
-
     # -- Utilities --
-    "httpx>=0.27",
     "tenacity>=8.3",
     "orjson>=3.10",
+
+    # -- Shared --
+    "parikrama-common",
 ]
 
 [build-system]

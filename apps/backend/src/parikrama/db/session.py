@@ -1,21 +1,13 @@
 """
 Async SQLAlchemy engine and session factory.
-
-Uses connection pooling with sensible defaults.
-Always use `get_db()` dependency in routes — never create sessions manually.
 """
 
 from collections.abc import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from parikrama.config import settings
 
-# connection pool — reuses connections instead of creating new ones per request
 engine = create_async_engine(
     settings.DATABASE_URL,
     pool_size=settings.DB_POOL_SIZE,

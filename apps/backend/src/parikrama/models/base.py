@@ -1,7 +1,5 @@
 """
 SQLAlchemy declarative base with reusable mixins.
-
-Every model inherits TimestampMixin to get created_at/updated_at automatically.
 """
 
 import uuid
@@ -19,7 +17,7 @@ class Base(DeclarativeBase):
 
 
 class TimestampMixin:
-    """Adds created_at and updated_at columns to any model."""
+    """Adds created_at and updated_at columns."""
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -35,7 +33,7 @@ class TimestampMixin:
 
 
 class UUIDPrimaryKeyMixin:
-    """UUID primary key — better than auto-increment for distributed systems."""
+    """UUID primary key."""
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
