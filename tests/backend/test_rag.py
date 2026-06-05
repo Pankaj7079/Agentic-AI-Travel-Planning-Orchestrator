@@ -8,16 +8,17 @@ Test categories:
     Unit: chunker, embeddings (mock), RRF math
     Integration: document upload/list/delete API via HTTP client
 """
+
 from __future__ import annotations
 
 import uuid
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
 
 # ── Unit Tests: Chunker ────────────────────────────────────────────────────────
+
 
 class TestChunker:
     """Tests for the document chunking logic."""
@@ -25,6 +26,7 @@ class TestChunker:
     def test_chunk_text_returns_list(self):
         """chunk_text should return a non-empty list of dicts."""
         from parikrama.rag.chunker import chunk_text
+
         text = "Manali is a beautiful hill station in Himachal Pradesh. " * 50
         chunks = chunk_text(text)
         assert isinstance(chunks, list)
@@ -33,6 +35,7 @@ class TestChunker:
     def test_chunk_dict_has_required_keys(self):
         """Each chunk dict must have content, chunk_index, token_count, metadata."""
         from parikrama.rag.chunker import chunk_text
+
         text = "Hello world. " * 200
         chunks = chunk_text(text)
         for chunk in chunks:
@@ -44,6 +47,7 @@ class TestChunker:
     def test_chunk_indices_are_sequential(self):
         """Chunk indices must be monotonically increasing starting from 0."""
         from parikrama.rag.chunker import chunk_text
+
         text = "Travel guide for Manali. " * 200
         chunks = chunk_text(text)
         indices = [c["chunk_index"] for c in chunks]
@@ -52,6 +56,7 @@ class TestChunker:
     def test_chunk_respects_max_size(self):
         """No chunk should exceed 2x the configured chunk size in characters."""
         from parikrama.rag.chunker import CHUNK_SIZE_CHARS, chunk_text
+
         text = "The quick brown fox jumps over the lazy dog. " * 500
         chunks = chunk_text(text)
         for chunk in chunks:
@@ -62,6 +67,7 @@ class TestChunker:
     def test_chunk_metadata_is_merged(self):
         """Caller-provided metadata should appear in every chunk's metadata."""
         from parikrama.rag.chunker import chunk_text
+
         text = "Manali hotels. " * 100
         meta = {"destination": "Manali", "source": "test"}
         chunks = chunk_text(text, metadata=meta)
@@ -72,12 +78,14 @@ class TestChunker:
     def test_chunk_empty_text_returns_empty(self):
         """Empty or whitespace-only input should return an empty list."""
         from parikrama.rag.chunker import chunk_text
+
         assert chunk_text("") == []
         assert chunk_text("   \n  \t  ") == []
 
     def test_chunk_hindi_text(self):
         """Hindi text should be chunked without errors."""
         from parikrama.rag.chunker import chunk_text
+
         text = "मनाली एक सुंदर हिल स्टेशन है। यहाँ की वादियाँ बहुत खूबसूरत हैं। " * 100
         chunks = chunk_text(text)
         assert len(chunks) > 0
@@ -88,6 +96,7 @@ class TestChunker:
     def test_chunk_pages(self):
         """chunk_pages should assign page numbers to metadata."""
         from parikrama.rag.chunker import chunk_pages
+
         pages = [
             "Page one content about Delhi. " * 50,
             "Page two content about Manali. " * 50,
@@ -101,6 +110,7 @@ class TestChunker:
     def test_token_count_is_positive(self):
         """Token count estimate must be >= 1 for non-empty chunks."""
         from parikrama.rag.chunker import chunk_text
+
         text = "Short text. " * 20
         chunks = chunk_text(text)
         for chunk in chunks:
@@ -109,6 +119,7 @@ class TestChunker:
 
 # ── Unit Tests: Embedding Service ──────────────────────────────────────────────
 
+
 class TestEmbeddingService:
     """Tests for the EmbeddingService (mocked to avoid loading the 80MB model)."""
 
@@ -116,11 +127,13 @@ class TestEmbeddingService:
     def test_embed_text_returns_list(self, mock_transformer):
         """embed_text should return a Python list of floats."""
         import numpy as np
+
         mock_model = MagicMock()
         mock_model.encode.return_value = np.zeros(384, dtype="float32")
         mock_transformer.return_value = mock_model
 
         from parikrama.rag.embeddings import EmbeddingService
+
         service = EmbeddingService()
         result = service.embed_text("test query")
 
@@ -131,11 +144,13 @@ class TestEmbeddingService:
     def test_embed_batch_length_matches_input(self, mock_transformer):
         """embed_batch result length must equal input list length."""
         import numpy as np
+
         mock_model = MagicMock()
         mock_model.encode.return_value = np.zeros((3, 384), dtype="float32")
         mock_transformer.return_value = mock_model
 
         from parikrama.rag.embeddings import EmbeddingService
+
         service = EmbeddingService()
         texts = ["text1", "text2", "text3"]
         result = service.embed_batch(texts)
@@ -147,6 +162,7 @@ class TestEmbeddingService:
     def test_embed_batch_empty_input(self, mock_transformer):
         """embed_batch with empty list should return empty list without calling model."""
         from parikrama.rag.embeddings import EmbeddingService
+
         service = EmbeddingService()
         result = service.embed_batch([])
         assert result == []
@@ -154,6 +170,7 @@ class TestEmbeddingService:
     def test_query_hash_is_deterministic(self):
         """Same text should always produce the same hash."""
         from parikrama.rag.embeddings import EmbeddingService
+
         h1 = EmbeddingService.query_hash("hotels in manali")
         h2 = EmbeddingService.query_hash("hotels in manali")
         assert h1 == h2
@@ -162,6 +179,7 @@ class TestEmbeddingService:
     def test_query_hash_case_insensitive(self):
         """Query hash should normalize to lowercase before hashing."""
         from parikrama.rag.embeddings import EmbeddingService
+
         h1 = EmbeddingService.query_hash("Hotels In Manali")
         h2 = EmbeddingService.query_hash("hotels in manali")
         assert h1 == h2
@@ -169,13 +187,16 @@ class TestEmbeddingService:
 
 # ── Unit Tests: RRF Fusion ─────────────────────────────────────────────────────
 
+
 class TestRRFFusion:
     """Tests for the Reciprocal Rank Fusion algorithm."""
 
     def _make_retriever(self):
         """Create a HybridRetriever with a mocked DB session."""
         from unittest.mock import MagicMock
+
         from parikrama.rag.retriever import HybridRetriever
+
         return HybridRetriever(db=MagicMock())
 
     def _make_results(self, chunk_ids: list[str]) -> list[dict]:
@@ -237,6 +258,7 @@ class TestRRFFusion:
 
 # ── Integration Tests: Document API ───────────────────────────────────────────
 
+
 class TestDocumentAPI:
     """Integration tests for the document upload/list/get/delete API."""
 
@@ -258,9 +280,7 @@ class TestDocumentAPI:
 
     @patch("parikrama.services.storage_service.Minio")
     @patch("parikrama.services.document_service.DocumentService._queue_processing")
-    async def test_upload_document_success(
-        self, mock_queue, mock_minio_class, client: AsyncClient
-    ):
+    async def test_upload_document_success(self, mock_queue, mock_minio_class, client: AsyncClient):
         """POST /documents/upload should return 201 with document metadata."""
         # Mock MinIO to avoid requiring a running MinIO server
         mock_client = MagicMock()
@@ -288,9 +308,7 @@ class TestDocumentAPI:
 
     @patch("parikrama.services.storage_service.Minio")
     @patch("parikrama.services.document_service.DocumentService._queue_processing")
-    async def test_list_documents_empty(
-        self, mock_queue, mock_minio_class, client: AsyncClient
-    ):
+    async def test_list_documents_empty(self, mock_queue, mock_minio_class, client: AsyncClient):
         """GET /documents should return empty list for new user."""
         headers = await self._get_auth_headers(client)
         resp = await client.get("/api/v1/documents", headers=headers)
@@ -337,9 +355,7 @@ class TestDocumentAPI:
 
     @patch("parikrama.services.storage_service.Minio")
     @patch("parikrama.services.document_service.DocumentService._queue_processing")
-    async def test_delete_document_success(
-        self, mock_queue, mock_minio_class, client: AsyncClient
-    ):
+    async def test_delete_document_success(self, mock_queue, mock_minio_class, client: AsyncClient):
         """Upload then DELETE a document — should return 204."""
         mock_client = MagicMock()
         mock_minio_class.return_value = mock_client

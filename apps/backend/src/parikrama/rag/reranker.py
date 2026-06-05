@@ -15,6 +15,7 @@ Pipeline:
   ↓ top-5 results
   Agents / API   ← grounded travel knowledge
 """
+
 from __future__ import annotations
 
 import structlog
@@ -23,8 +24,7 @@ try:
     from sentence_transformers import CrossEncoder
 except ImportError as e:  # pragma: no cover
     raise ImportError(
-        "sentence-transformers is required for reranking. "
-        "Run: uv add sentence-transformers"
+        "sentence-transformers is required for reranking. Run: uv add sentence-transformers"
     ) from e
 
 logger = structlog.get_logger(__name__)
@@ -79,8 +79,7 @@ class Reranker:
 
         # Attach scores and sort descending.
         scored = [
-            {**result, "rerank_score": float(score)}
-            for result, score in zip(results, raw_scores)
+            {**result, "rerank_score": float(score)} for result, score in zip(results, raw_scores, strict=True)
         ]
         reranked = sorted(scored, key=lambda x: x["rerank_score"], reverse=True)
 

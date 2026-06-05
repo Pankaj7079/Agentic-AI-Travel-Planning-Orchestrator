@@ -12,6 +12,7 @@ This preserves semantic coherence within each chunk.
 512-token chunks with 50-token overlap work best for travel content:
 large enough for hotel + pricing context, small enough for precise retrieval.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -111,9 +112,7 @@ def chunk_text(
             }
         )
 
-    avg_tokens = (
-        sum(c["token_count"] for c in chunks) // len(chunks) if chunks else 0
-    )
+    avg_tokens = sum(c["token_count"] for c in chunks) // len(chunks) if chunks else 0
     logger.info(
         "text_chunked",
         total_chunks=len(chunks),

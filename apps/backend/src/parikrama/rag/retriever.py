@@ -15,6 +15,7 @@ Why RRF over simple score averaging:
 - RRF only uses rank positions, making it scale-invariant
 - Standard k=60 prevents top-ranked items from having outsized influence
 """
+
 from __future__ import annotations
 
 import structlog
@@ -64,12 +65,8 @@ class HybridRetriever:
 
         # Run both searches; they're independent so we could run concurrently,
         # but pgvector embed_text blocks anyway so sequential is simpler here.
-        semantic_results = await self._semantic_search(
-            query, candidate_k, filter_metadata, user_id
-        )
-        keyword_results = await self._keyword_search(
-            query, candidate_k, filter_metadata, user_id
-        )
+        semantic_results = await self._semantic_search(query, candidate_k, filter_metadata, user_id)
+        keyword_results = await self._keyword_search(query, candidate_k, filter_metadata, user_id)
 
         # Merge with Reciprocal Rank Fusion.
         merged = self._reciprocal_rank_fusion(
@@ -114,7 +111,7 @@ class HybridRetriever:
         if filter_metadata:
             for i, (key, value) in enumerate(filter_metadata.items()):
                 param_name = f"meta_{i}"
-                conditions.append(f"dc.metadata->>'{ key }' = :{param_name}")
+                conditions.append(f"dc.metadata->>'{key}' = :{param_name}")
                 params[param_name] = value
 
         where_clause = ""
@@ -177,7 +174,7 @@ class HybridRetriever:
         if filter_metadata:
             for i, (key, value) in enumerate(filter_metadata.items()):
                 param_name = f"meta_{i}"
-                conditions.append(f"dc.metadata->>'{ key }' = :{param_name}")
+                conditions.append(f"dc.metadata->>'{key}' = :{param_name}")
                 params[param_name] = value
 
         extra_where = ""
@@ -185,7 +182,7 @@ class HybridRetriever:
             extra_where = "AND " + " AND ".join(conditions)
 
         # Try trigram similarity first; fall back to ILIKE for short queries.
-        if len(query) >= 3:  # noqa: PLR2004
+        if len(query) >= 3:
             sql = text(
                 f"""
                 SELECT
@@ -269,7 +266,4 @@ class HybridRetriever:
                 chunk_data[cid] = item
 
         sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-        return [
-            {**chunk_data[cid], "rrf_score": round(scores[cid], 6)}
-            for cid in sorted_ids
-        ]
+        return [{**chunk_data[cid], "rrf_score": round(scores[cid], 6)} for cid in sorted_ids]

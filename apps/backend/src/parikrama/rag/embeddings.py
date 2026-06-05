@@ -6,10 +6,10 @@ Caches query embeddings in Redis to avoid redundant computation.
 
 Model: all-MiniLM-L6-v2 (384 dimensions, 80MB, ~5ms per query on CPU)
 """
+
 from __future__ import annotations
 
 import hashlib
-import logging
 
 import numpy as np
 import structlog
@@ -21,8 +21,7 @@ try:
     from sentence_transformers import SentenceTransformer
 except ImportError as e:  # pragma: no cover
     raise ImportError(
-        "sentence-transformers is required for the RAG pipeline. "
-        "Run: uv add sentence-transformers"
+        "sentence-transformers is required for the RAG pipeline. Run: uv add sentence-transformers"
     ) from e
 
 DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"

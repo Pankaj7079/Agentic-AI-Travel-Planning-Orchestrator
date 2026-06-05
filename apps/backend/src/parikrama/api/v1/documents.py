@@ -7,6 +7,7 @@ Endpoints:
     GET    /api/v1/documents/{id}         Get document details + processing status
     DELETE /api/v1/documents/{id}         Delete document and all its chunks
 """
+
 from __future__ import annotations
 
 import uuid
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 
 
 # ── Upload ─────────────────────────────────────────────────────────────────────
+
 
 @router.post(
     "/upload",
@@ -78,6 +80,7 @@ async def upload_document(
 
 # ── List ───────────────────────────────────────────────────────────────────────
 
+
 @router.get(
     "",
     response_model=DocumentListResponse,
@@ -108,6 +111,7 @@ async def list_documents(
 
 # ── Get ────────────────────────────────────────────────────────────────────────
 
+
 @router.get(
     "/{document_id}",
     response_model=DocumentResponse,
@@ -130,6 +134,7 @@ async def get_document(
 
 
 # ── Delete ─────────────────────────────────────────────────────────────────────
+
 
 @router.delete(
     "/{document_id}",

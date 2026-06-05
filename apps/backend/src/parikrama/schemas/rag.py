@@ -3,18 +3,19 @@ RAG pipeline schemas — request/response models for document management and sea
 
 All schemas use Pydantic v2 with strict validation.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
-class DocumentStatus(str, Enum):
+
+class DocumentStatus(StrEnum):
     """Processing status lifecycle of an uploaded document."""
 
     UPLOADED = "uploaded"
@@ -25,6 +26,7 @@ class DocumentStatus(str, Enum):
 
 
 # ── Document Schemas ───────────────────────────────────────────────────────────
+
 
 class DocumentUploadResponse(BaseModel):
     """Response after a document is uploaded and processing is queued."""
@@ -66,6 +68,7 @@ class DocumentListResponse(BaseModel):
 
 
 # ── RAG Search Schemas ─────────────────────────────────────────────────────────
+
 
 class SearchRequest(BaseModel):
     """Request to perform a hybrid RAG search."""

@@ -5,6 +5,7 @@ Two models:
 - Document: metadata about an uploaded file (stored in MinIO)
 - DocumentChunk: text chunk + 384-dim embedding (stored in pgvector)
 """
+
 from __future__ import annotations
 
 import uuid
@@ -18,6 +19,7 @@ from parikrama.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 # pgvector Column type — lazy import so the model can still load without pgvector
 try:
     from pgvector.sqlalchemy import Vector
+
     _VECTOR_AVAILABLE = True
 except ImportError:  # pragma: no cover
     Vector = None  # type: ignore[assignment,misc]
@@ -40,9 +42,7 @@ class Document(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="uploaded", index=True
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="uploaded", index=True)
     minio_key: Mapped[str] = mapped_column(String(500), nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -83,9 +83,7 @@ class DocumentChunk(Base, UUIDPrimaryKeyMixin):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    doc_metadata: Mapped[dict] = mapped_column(
-        "metadata", JSONB, nullable=False, default=dict
-    )
+    doc_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
 
     # pgvector column — requires pgvector extension in Postgres
     embedding: Mapped[list[float]] = mapped_column(

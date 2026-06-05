@@ -4,6 +4,7 @@ Storage service — MinIO file upload/download/delete wrapper.
 All document files (PDFs, TXTs) are stored in MinIO object storage.
 The Postgres ``documents`` table only keeps metadata + the MinIO object key.
 """
+
 from __future__ import annotations
 
 import io
@@ -162,6 +163,7 @@ def get_presigned_url(object_key: str, expires_seconds: int = 3600) -> str:
         Presigned HTTPS/HTTP URL string.
     """
     from datetime import timedelta
+
     client = _get_client()
     url = client.presigned_get_object(
         BUCKET_NAME,

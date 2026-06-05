@@ -8,6 +8,7 @@ Flow:
 
 Retries: 3 attempts with 60-second delay (handles transient MinIO/Postgres outages).
 """
+
 from __future__ import annotations
 
 import os
@@ -15,7 +16,7 @@ import uuid
 
 import structlog
 from celery import shared_task
-from sqlalchemy import create_engine, text, update
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 logger = structlog.get_logger(__name__)
@@ -40,6 +41,7 @@ def _get_sync_session() -> Session:
 
 
 # ── Document Processing Task ───────────────────────────────────────────────────
+
 
 @shared_task(
     bind=True,
@@ -84,14 +86,13 @@ def process_document(self, document_id: str, minio_key: str) -> dict:
             raw_text = file_bytes.decode("utf-8", errors="replace")
 
         if not raw_text.strip():
-            raise ValueError(
-                "Extracted text is empty — file may be image-only PDF or corrupted."
-            )
+            raise ValueError("Extracted text is empty — file may be image-only PDF or corrupted.")
 
         log.info("text_extracted", char_count=len(raw_text))
 
         # ── Step 4: Chunk the text ────────────────────────────────────────────
         from parikrama.rag.chunker import chunk_text
+
         chunks = chunk_text(
             raw_text,
             metadata={"document_id": document_id},
@@ -101,6 +102,7 @@ def process_document(self, document_id: str, minio_key: str) -> dict:
 
         # ── Step 5: Generate embeddings in batches ────────────────────────────
         from parikrama.rag.embeddings import embedding_service
+
         contents = [c["content"] for c in chunks]
         embeddings = embedding_service.embed_batch(contents, batch_size=32)
         log.info("embeddings_generated", count=len(embeddings))
@@ -111,8 +113,7 @@ def process_document(self, document_id: str, minio_key: str) -> dict:
         # ── Step 7: Update document status to embedded ────────────────────────
         db.execute(
             text(
-                "UPDATE documents SET status='embedded', chunk_count=:count "
-                "WHERE id=:doc_id::uuid"
+                "UPDATE documents SET status='embedded', chunk_count=:count WHERE id=:doc_id::uuid"
             ),
             {"count": len(chunks), "doc_id": document_id},
         )
@@ -125,16 +126,16 @@ def process_document(self, document_id: str, minio_key: str) -> dict:
         db.rollback()
         _update_status(db, document_id, "failed", error=str(exc))
         log.error("document_processing_failed", error=str(exc))
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
     finally:
         db.close()
 
 
 # ── Private helpers ────────────────────────────────────────────────────────────
 
+
 def _download_from_minio(minio_key: str) -> bytes:
     """Download a file from MinIO by its object key."""
-    import io
     from minio import Minio
 
     endpoint = os.getenv("MINIO_ENDPOINT", "localhost:9000")
@@ -155,6 +156,7 @@ def _download_from_minio(minio_key: str) -> bytes:
 def _extract_pdf_pages(file_bytes: bytes) -> list[str]:
     """Extract text from each page of a PDF using PyMuPDF (fastest Python PDF lib)."""
     import io
+
     try:
         import pymupdf  # type: ignore[import]
     except ImportError:
@@ -201,7 +203,7 @@ def _store_chunks(
     import json as json_lib
 
     records = []
-    for chunk, embedding in zip(chunks, embeddings):
+    for chunk, embedding in zip(chunks, embeddings, strict=True):
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
         records.append(
             {
@@ -230,8 +232,7 @@ def _update_status(
     if error:
         db.execute(
             text(
-                "UPDATE documents SET status=:status, error_message=:error "
-                "WHERE id=:doc_id::uuid"
+                "UPDATE documents SET status=:status, error_message=:error WHERE id=:doc_id::uuid"
             ),
             {"status": status, "error": error, "doc_id": document_id},
         )

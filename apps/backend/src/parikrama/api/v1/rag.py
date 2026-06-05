@@ -6,6 +6,7 @@ Endpoints:
     POST /api/v1/rag/search/semantic   Semantic-only search
     POST /api/v1/rag/search/keyword    Keyword-only search
 """
+
 from __future__ import annotations
 
 import structlog

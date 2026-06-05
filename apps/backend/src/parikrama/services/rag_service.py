@@ -14,6 +14,7 @@ Example usage by the Research Agent:
     ))
     context = "\\n\\n".join(r.content for r in results)
 """
+
 from __future__ import annotations
 
 import structlog

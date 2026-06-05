@@ -55,7 +55,6 @@ select = [
     "C4",  # flake8-comprehensions
     "UP",  # pyupgrade
     "SIM", # flake8-simplify
-    "TCH", # type-checking imports
     "RUF", # ruff-specific
 ]
 ignore = ["E501", "B008", "E402"]

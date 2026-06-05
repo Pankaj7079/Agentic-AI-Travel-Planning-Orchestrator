@@ -6,6 +6,7 @@ Flow:
 2. Celery worker processes the file asynchronously (chunk + embed)
 3. User can check status, list, or delete their documents
 """
+
 from __future__ import annotations
 
 import uuid
@@ -106,7 +107,10 @@ class DocumentService:
         the backend server boot fast when no Celery broker is needed).
         """
         try:
-            from parikrama_worker.tasks.document_tasks import process_document  # type: ignore[import]
+            from parikrama_worker.tasks.document_tasks import (
+                process_document,  # type: ignore[import]
+            )
+
             process_document.delay(document_id, minio_key)
             logger.info("document_processing_queued", document_id=document_id)
         except ImportError:
@@ -160,12 +164,7 @@ class DocumentService:
         total = (await self.db.execute(count_q)).scalar_one()
 
         # Paginated items
-        items_q = (
-            base_q
-            .order_by(Document.created_at.desc())
-            .offset(offset)
-            .limit(page_size)
-        )
+        items_q = base_q.order_by(Document.created_at.desc()).offset(offset).limit(page_size)
         rows = (await self.db.execute(items_q)).scalars().all()
 
         return DocumentListResponse(
