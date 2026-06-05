@@ -10,9 +10,12 @@ Model: all-MiniLM-L6-v2 (384 dimensions, 80MB, ~5ms per query on CPU)
 from __future__ import annotations
 
 import hashlib
+from typing import TYPE_CHECKING
 
-import numpy as np
 import structlog
+
+if TYPE_CHECKING:
+    import numpy as np
 
 logger = structlog.get_logger(__name__)
 

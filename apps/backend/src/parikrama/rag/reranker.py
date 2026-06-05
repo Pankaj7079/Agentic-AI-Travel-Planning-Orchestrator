@@ -79,7 +79,8 @@ class Reranker:
 
         # Attach scores and sort descending.
         scored = [
-            {**result, "rerank_score": float(score)} for result, score in zip(results, raw_scores, strict=True)
+            {**result, "rerank_score": float(score)}
+            for result, score in zip(results, raw_scores, strict=False)
         ]
         reranked = sorted(scored, key=lambda x: x["rerank_score"], reverse=True)
 

@@ -18,11 +18,15 @@ Why RRF over simple score averaging:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import structlog
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from parikrama.rag.embeddings import embedding_service
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 

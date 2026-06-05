@@ -8,7 +8,7 @@ Two models:
 
 from __future__ import annotations
 
-import uuid
+import uuid  # noqa: TC003
 
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID

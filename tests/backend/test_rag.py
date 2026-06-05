@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import uuid
 from io import BytesIO
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-from httpx import AsyncClient
+if TYPE_CHECKING:
+    from httpx import AsyncClient
 
 # ── Unit Tests: Chunker ────────────────────────────────────────────────────────
 

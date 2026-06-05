@@ -10,14 +10,17 @@ Flow:
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 import structlog
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from parikrama.models.document import Document
 from parikrama.schemas.rag import DocumentListResponse, DocumentResponse, DocumentUploadResponse
 from parikrama.services import storage_service
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 

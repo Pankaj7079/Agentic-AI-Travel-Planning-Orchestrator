@@ -9,14 +9,18 @@ Endpoints:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import structlog
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from parikrama.core.security import get_current_user_id
 from parikrama.db.session import get_db
 from parikrama.schemas.rag import SearchRequest, SearchResponse
 from parikrama.services.rag_service import RAGService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/rag", tags=["RAG Search"])

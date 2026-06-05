@@ -203,7 +203,7 @@ def _store_chunks(
     import json as json_lib
 
     records = []
-    for chunk, embedding in zip(chunks, embeddings, strict=True):
+    for chunk, embedding in zip(chunks, embeddings, strict=False):
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
         records.append(
             {

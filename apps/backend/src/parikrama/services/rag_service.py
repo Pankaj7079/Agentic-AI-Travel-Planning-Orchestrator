@@ -17,12 +17,16 @@ Example usage by the Research Agent:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from parikrama.rag.reranker import reranker
 from parikrama.rag.retriever import HybridRetriever
 from parikrama.schemas.rag import SearchRequest, SearchResponse, SearchResult
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 

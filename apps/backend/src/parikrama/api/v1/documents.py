@@ -11,15 +11,18 @@ Endpoints:
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from parikrama.core.security import get_current_user_id
 from parikrama.db.session import get_db
 from parikrama.schemas.rag import DocumentListResponse, DocumentResponse, DocumentUploadResponse
 from parikrama.services.document_service import DocumentService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/documents", tags=["Documents"])
