@@ -2,7 +2,7 @@
 
 from parikrama.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from parikrama.models.cost import CostTracking
-from parikrama.models.document import Document
+from parikrama.models.document import Document, DocumentChunk
 from parikrama.models.trip import AgentRun, Trip
 from parikrama.models.user import RefreshToken, User
 
@@ -11,6 +11,7 @@ __all__ = [
     "Base",
     "CostTracking",
     "Document",
+    "DocumentChunk",
     "RefreshToken",
     "TimestampMixin",
     "Trip",
