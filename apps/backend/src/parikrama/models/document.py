@@ -8,13 +8,16 @@ Two models:
 
 from __future__ import annotations
 
-import uuid  # noqa: TC003
+from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from parikrama.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    import uuid
 
 # pgvector Column type — lazy import so the model can still load without pgvector
 try:
