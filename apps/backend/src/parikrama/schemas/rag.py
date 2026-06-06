@@ -6,14 +6,11 @@ All schemas use Pydantic v2 with strict validation.
 
 from __future__ import annotations
 
+import uuid  # noqa: TC003
+from datetime import datetime  # noqa: TC003
 from enum import StrEnum
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
-
-if TYPE_CHECKING:
-    import uuid
-    from datetime import datetime
 
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
