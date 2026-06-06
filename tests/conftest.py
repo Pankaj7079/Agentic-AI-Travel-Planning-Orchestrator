@@ -32,12 +32,8 @@ from sqlalchemy.pool import NullPool
 @pytest_asyncio.fixture(scope="session")
 async def test_engine():
     """Create a test database engine."""
-    from sqlalchemy import text
     engine = create_async_engine(settings.DATABASE_URL, echo=False, poolclass=NullPool)
     async with engine.begin() as conn:
-        # Create extensions needed for RAG before creating tables
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
         await conn.run_sync(Base.metadata.create_all)
     yield engine
     async with engine.begin() as conn:
