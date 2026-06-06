@@ -8,8 +8,7 @@ Two models:
 
 from __future__ import annotations
 
-import uuid
-from typing import TYPE_CHECKING
+import uuid  # noqa: TC003
 
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
