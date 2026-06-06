@@ -11,9 +11,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-if TYPE_CHECKING:
-    import uuid
-    from datetime import datetime
+import uuid
+from datetime import datetime
 
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
