@@ -152,13 +152,11 @@ class BaseAgent(ABC):
         )
         prompt = f"{state['query']}{rag_section}"
 
-        start = time.monotonic()
         response = await self._router.generate(
             prompt=prompt,
             system=self._system_prompt,
             temperature=0.7,
         )
-        latency = int((time.monotonic() - start) * 1000)
 
         state["llm_response"] = response.content
         state["llm_provider"] = response.provider  # type: ignore[assignment]

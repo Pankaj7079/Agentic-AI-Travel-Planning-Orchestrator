@@ -32,6 +32,7 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 
 # ── Request / Response schemas ─────────────────────────────────────────────────
 
+
 class ItineraryRequest(BaseModel):
     """Request body for itinerary generation."""
 
@@ -70,6 +71,7 @@ class AgentResponse(BaseModel):
 
 # ── LLM Router dependency ──────────────────────────────────────────────────────
 
+
 def _get_llm_router():  # type: ignore[return]
     """FastAPI dependency — returns the singleton LLMRouter.
 
@@ -88,6 +90,7 @@ def _get_llm_router():  # type: ignore[return]
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
+
 
 @router.post(
     "/itinerary",

@@ -70,9 +70,7 @@ class GeminiProvider:
             response = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: self._client.generate_content(
-                        full_prompt, generation_config=config
-                    ),
+                    lambda: self._client.generate_content(full_prompt, generation_config=config),
                 ),
                 timeout=self._timeout,
             )

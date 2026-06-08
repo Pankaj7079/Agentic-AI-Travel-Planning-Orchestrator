@@ -41,6 +41,7 @@ def _make_mock_router(response_content: str = "Mock itinerary content") -> Magic
 
 # ── ItineraryAgent unit tests ──────────────────────────────────────────────────
 
+
 class TestItineraryAgent:
     @pytest.mark.asyncio
     async def test_itinerary_agent_returns_output(self):
@@ -53,9 +54,7 @@ class TestItineraryAgent:
         # Mock RAG service to return empty (no docs uploaded)
         with patch(
             "parikrama.agents.base.RAGService",
-            return_value=MagicMock(
-                get_context_for_query=AsyncMock(return_value="")
-            ),
+            return_value=MagicMock(get_context_for_query=AsyncMock(return_value="")),
         ):
             agent = ItineraryAgent(llm_router=router, db=db)
             output = await agent.run(
@@ -83,9 +82,7 @@ class TestItineraryAgent:
 
         with patch(
             "parikrama.agents.base.RAGService",
-            return_value=MagicMock(
-                get_context_for_query=AsyncMock(return_value=fake_context)
-            ),
+            return_value=MagicMock(get_context_for_query=AsyncMock(return_value=fake_context)),
         ):
             agent = ItineraryAgent(llm_router=router, db=db)
             output = await agent.run(
@@ -97,7 +94,9 @@ class TestItineraryAgent:
 
         # Verify LLM was called with context injected in prompt
         call_args = router.generate.call_args
-        assert fake_context in call_args.kwargs.get("prompt", call_args.args[0] if call_args.args else "")
+        assert fake_context in call_args.kwargs.get(
+            "prompt", call_args.args[0] if call_args.args else ""
+        )
         assert output.rag_chunks_used > 0
 
     @pytest.mark.asyncio
@@ -137,6 +136,7 @@ class TestItineraryAgent:
 
 
 # ── BudgetAgent unit tests ─────────────────────────────────────────────────────
+
 
 class TestBudgetAgent:
     @pytest.mark.asyncio
@@ -213,6 +213,7 @@ class TestBudgetAgent:
 
 # ── Agent API integration tests ────────────────────────────────────────────────
 
+
 class TestAgentAPI:
     async def _get_auth_headers(self, client: AsyncClient) -> dict:
         email = f"agenttest_{uuid.uuid4().hex[:8]}@example.com"
@@ -250,9 +251,9 @@ class TestAgentAPI:
         headers = await self._get_auth_headers(client)
         with patch(
             "parikrama.api.v1.agents._get_llm_router",
-            side_effect=__import__(
-                "fastapi", fromlist=["HTTPException"]
-            ).HTTPException(status_code=503, detail="No LLM configured"),
+            side_effect=__import__("fastapi", fromlist=["HTTPException"]).HTTPException(
+                status_code=503, detail="No LLM configured"
+            ),
         ):
             resp = await client.post(
                 "/api/v1/agents/itinerary",

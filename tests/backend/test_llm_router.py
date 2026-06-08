@@ -14,7 +14,9 @@ from parikrama.llm.router import LLMRouter, LLMUnavailableError
 from parikrama.llm.schemas import CircuitState, LLMProvider, LLMResponse
 
 
-def _make_response(provider: LLMProvider = LLMProvider.GEMINI, latency_ms: int = 500) -> LLMResponse:
+def _make_response(
+    provider: LLMProvider = LLMProvider.GEMINI, latency_ms: int = 500
+) -> LLMResponse:
     return LLMResponse(
         content="Test response content",
         provider=provider,
@@ -53,6 +55,7 @@ def _make_router(
 
 # ── Construction ───────────────────────────────────────────────────────────────
 
+
 class TestLLMRouterConstruction:
     def test_raises_if_no_providers(self):
         with pytest.raises(LLMUnavailableError, match="At least one"):
@@ -70,6 +73,7 @@ class TestLLMRouterConstruction:
 
 
 # ── Normal routing ─────────────────────────────────────────────────────────────
+
 
 class TestLLMRouterNormalRouting:
     @pytest.mark.asyncio
@@ -102,6 +106,7 @@ class TestLLMRouterNormalRouting:
 
 
 # ── Circuit breaker ────────────────────────────────────────────────────────────
+
 
 class TestCircuitBreaker:
     @pytest.mark.asyncio
@@ -140,6 +145,7 @@ class TestCircuitBreaker:
 
         # Fake that recovery interval has passed
         import time
+
         router._gemini_open_since = time.monotonic() - 1  # 1s ago
 
         # Reset gemini to succeed now

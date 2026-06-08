@@ -119,8 +119,7 @@ class LLMRouter:
             return await self._call_groq(prompt, system, temperature)
 
         raise LLMUnavailableError(
-            "Gemini circuit is open and no Groq fallback is configured. "
-            "Add GROQ_API_KEY to .env"
+            "Gemini circuit is open and no Groq fallback is configured. Add GROQ_API_KEY to .env"
         )
 
     def health_status(self) -> dict:
@@ -235,9 +234,7 @@ class LLMRouter:
             raise LLMUnavailableError("Gemini is not configured")
         return await self._gemini.generate(prompt, system, temperature)
 
-    async def _call_groq(
-        self, prompt: str, system: str, temperature: float
-    ) -> LLMResponse:
+    async def _call_groq(self, prompt: str, system: str, temperature: float) -> LLMResponse:
         if not self._groq:
             raise LLMUnavailableError("Groq is not configured")
         start = time.monotonic()
@@ -246,9 +243,7 @@ class LLMRouter:
             await self._record_groq_call(int((time.monotonic() - start) * 1000))
             return response
         except Exception:
-            await self._record_groq_call(
-                int((time.monotonic() - start) * 1000), error=True
-            )
+            await self._record_groq_call(int((time.monotonic() - start) * 1000), error=True)
             raise
 
     def _active_provider_name(self) -> str:

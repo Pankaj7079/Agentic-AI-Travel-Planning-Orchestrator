@@ -18,8 +18,8 @@ class LLMProvider(StrEnum):
 class CircuitState(StrEnum):
     """Circuit breaker states."""
 
-    CLOSED = "closed"    # healthy — requests flow normally
-    OPEN = "open"        # unhealthy — requests skip to fallback
+    CLOSED = "closed"  # healthy — requests flow normally
+    OPEN = "open"  # unhealthy — requests skip to fallback
     HALF_OPEN = "half_open"  # recovery probe in progress
 
 
