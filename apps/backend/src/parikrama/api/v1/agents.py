@@ -22,8 +22,10 @@ from parikrama.agents.schemas import AgentInput, AgentOutput
 from parikrama.core.security import get_current_user_id
 from parikrama.db.session import get_db
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    pass
 
 logger = structlog.get_logger(__name__)
 
