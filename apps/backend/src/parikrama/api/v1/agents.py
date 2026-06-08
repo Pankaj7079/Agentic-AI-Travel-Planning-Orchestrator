@@ -12,20 +12,16 @@ Routes:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: TC002
 
 from parikrama.agents.schemas import AgentInput, AgentOutput
 from parikrama.core.security import get_current_user_id
 from parikrama.db.session import get_db
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
-if TYPE_CHECKING:
-    pass
 
 logger = structlog.get_logger(__name__)
 
