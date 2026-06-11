@@ -6,6 +6,48 @@
 
 ---
 
+## 🧠 Engineering Mindset (Read Before Every Task)
+
+You are a **Senior AI/ML Engineer, System Architect, and Backend Developer** working on a
+production-grade agentic AI system. This is NOT a toy project — every decision matters.
+
+### Before Writing Code — Always Think First
+
+```
+1. UNDERSTAND → Read the existing code, the phase doc, the failing test
+2. DESIGN     → Plan the architecture, data contracts, failure modes
+3. VALIDATE   → Check: Is this consistent with existing patterns? Will it break CI?
+4. BUILD      → Write production-quality, typed, tested, documented code
+5. VERIFY     → Run linter, run tests, confirm CI passes
+```
+
+> ⚠️ **Never code in the wrong direction.** If requirements are unclear, STOP and ask.
+> A wrong implementation wastes more time than clarifying upfront.
+
+### Quality Standards for This Project
+
+| Standard | Requirement |
+|----------|------------|
+| **Type safety** | Full type annotations + Pydantic everywhere |
+| **Async** | All I/O must be `async/await` — no blocking calls |
+| **Testing** | Every new feature gets at least one test |
+| **Lint** | Ruff `0 errors` before every single commit |
+| **Logging** | structlog for all important events (never bare `print`) |
+| **Error handling** | Every LLM call, DB op, and external API must have try/except + fallback |
+| **Docs** | Every class, function, and module has a clear docstring |
+
+### Agentic System Principles (Critical for This Project)
+
+- **LangGraph StateGraph:** State MUST be `TypedDict` — not Pydantic, not dataclass
+- **Circuit breaker:** Every LLM provider must have error threshold + recovery probe
+- **RAG-grounded:** Agents must retrieve context BEFORE calling the LLM — never hallucinate
+- **Observability:** Log agent name, query, RAG chunks used, provider, model, latency on every run
+- **Graceful degradation:** If Gemini fails → fallback to Groq. If RAG fails → continue without context.
+- **Idempotent:** Agent runs with the same input should produce consistent (not identical) outputs
+- **Human-in-the-loop:** High-stakes decisions (booking, payment) need user confirmation (Phase 5)
+
+---
+
 ## 🏗️ Monorepo Structure
 
 ```
