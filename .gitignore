@@ -62,3 +62,10 @@ Desktop.ini
 *.tmp
 celerybeat-schedule
 celerybeat.pid
+runs.json
+
+# ── Claude Code (AI assistant memory — local only) ───────────────────
+# CLAUDE.md is intentionally tracked in git so the team shares context.
+# .claude/ settings are personal — not shared.
+.claude/settings.local.json
+scratch/
