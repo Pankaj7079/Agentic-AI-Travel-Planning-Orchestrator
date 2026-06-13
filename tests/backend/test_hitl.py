@@ -80,7 +80,7 @@ async def _register_and_login(client: AsyncClient, email: str = "hitl@test.com")
         "/api/v1/auth/login",
         json={"email": email, "password": "Secure@123"},
     )
-    return resp.json()["access_token"]
+    return resp.json()["tokens"]["access_token"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -548,9 +548,9 @@ class TestApprovalsAPI:
 
     @pytest.mark.asyncio
     async def test_list_approvals_requires_auth(self, client: AsyncClient):
-        """GET /approvals without token returns 403."""
+        """GET /approvals without token returns 401."""
         resp = await client.get("/api/v1/approvals")
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
     @pytest.mark.asyncio
     async def test_list_approvals_empty(self, client: AsyncClient):
@@ -595,9 +595,9 @@ class TestNotificationsAPI:
 
     @pytest.mark.asyncio
     async def test_list_notifications_requires_auth(self, client: AsyncClient):
-        """GET /notifications without token returns 403."""
+        """GET /notifications without token returns 401."""
         resp = await client.get("/api/v1/notifications")
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
     @pytest.mark.asyncio
     async def test_list_notifications_empty(self, client: AsyncClient):
