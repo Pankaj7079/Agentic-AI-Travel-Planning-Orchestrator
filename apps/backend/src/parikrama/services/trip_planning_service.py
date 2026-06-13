@@ -205,7 +205,13 @@ class TripPlanningService:
         errors = final_state.get("errors", [])
 
         # Map agent messages to AgentRun records
-        agent_order = ["orchestrator", "research", "booking", "budget_optimizer", "itinerary_finalizer"]
+        agent_order = [
+            "orchestrator",
+            "research",
+            "booking",
+            "budget_optimizer",
+            "itinerary_finalizer",
+        ]
         agent_duration_ms = total_duration_ms // max(len(agent_order), 1)
 
         seen_agents: set[str] = set()
@@ -216,9 +222,7 @@ class TripPlanningService:
             seen_agents.add(agent_name)
 
             # Check for errors related to this agent
-            agent_error = next(
-                (e for e in errors if agent_name.lower() in e.lower()), None
-            )
+            agent_error = next((e for e in errors if agent_name.lower() in e.lower()), None)
 
             run = AgentRun(
                 trip_id=uuid.UUID(trip_id),

@@ -98,7 +98,9 @@ async def orchestrator_node(
         "days": int(parsed.get("days", 3)),
         "budget_inr": float(parsed.get("budget_inr", 10000)),
         "travelers": int(parsed.get("travelers", 1)),
-        "preferences": parsed.get("preferences", {"interests": [], "food": "any", "style": "budget"}),
+        "preferences": parsed.get(
+            "preferences", {"interests": [], "food": "any", "style": "budget"}
+        ),
         "language": str(parsed.get("language", "en")),
     }
 

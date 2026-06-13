@@ -128,7 +128,9 @@ async def plan_trip(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except LLMUnavailableError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
     except RuntimeError as exc:
         logger.error("trip_planning_api_error", trip_id=trip_id, error=str(exc))
         raise HTTPException(
@@ -175,6 +177,7 @@ async def get_agent_runs(
     # llm_router not needed for this read-only operation
     try:
         from parikrama.config import settings
+
         llm_router = LLMRouter.from_settings(settings)
     except Exception:
         # For agent history reads, we don't need a working LLM router

@@ -114,7 +114,10 @@ async def _search_hotels_safe(
     """Search hotels with error capture."""
     try:
         results = await search_hotels(destination, nights, max_per_night)
-        return [HotelOption(**{k: v for k, v in h.items() if k in HotelOption.__annotations__}) for h in results]
+        return [
+            HotelOption(**{k: v for k, v in h.items() if k in HotelOption.__annotations__})
+            for h in results
+        ]
     except Exception as exc:
         logger.warning("hotel_search_error", error=str(exc)[:100])
         errors.append(f"Hotel search failed: {exc}")

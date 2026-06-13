@@ -89,7 +89,9 @@ async def research_node(
 
     # ── Synthesize via LLM ────────────────────────────────────────────────────
     context = _build_research_context(request, weather_result, places_result, rag_result)
-    research_brief = await _synthesize_research(context, destination, days, llm_router, state, errors)
+    research_brief = await _synthesize_research(
+        context, destination, days, llm_router, state, errors
+    )
 
     messages: list[AgentMessage] = list(state.get("messages", []))
     messages.append(
@@ -193,7 +195,10 @@ def _build_research_context(
         advisory = weather.get("advisory", "")
         forecasts = weather.get("forecasts", [])
         if forecasts:
-            temps = [f"Day {i+1}: {f['temp_min']}-{f['temp_max']}C" for i, f in enumerate(forecasts[:3])]
+            temps = [
+                f"Day {i + 1}: {f['temp_min']}-{f['temp_max']}C"
+                for i, f in enumerate(forecasts[:3])
+            ]
             parts.append(f"\nWeather: {', '.join(temps)}")
         if advisory:
             parts.append(f"Weather Advisory: {advisory}")

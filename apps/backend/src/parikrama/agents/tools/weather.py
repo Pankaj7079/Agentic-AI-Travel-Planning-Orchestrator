@@ -21,7 +21,17 @@ OPENWEATHERMAP_URL = "https://api.openweathermap.org/data/2.5/forecast"
 
 # Hill stations known for temperature drops — extra advisory
 _HILL_STATIONS = frozenset(
-    ["manali", "shimla", "leh", "ladakh", "darjeeling", "ooty", "mussoorie", "nainital", "kodaikanal"]
+    [
+        "manali",
+        "shimla",
+        "leh",
+        "ladakh",
+        "darjeeling",
+        "ooty",
+        "mussoorie",
+        "nainital",
+        "kodaikanal",
+    ]
 )
 
 

@@ -87,15 +87,17 @@ class TestOrchestratorNode:
         """Orchestrator correctly extracts structured data from English input."""
         from parikrama.agents.orchestrator import orchestrator_node
 
-        parsed_json = json.dumps({
-            "origin": "Delhi",
-            "destination": "Manali",
-            "days": 5,
-            "budget_inr": 15000,
-            "travelers": 1,
-            "preferences": {"interests": ["adventure"], "food": "any", "style": "budget"},
-            "language": "en",
-        })
+        parsed_json = json.dumps(
+            {
+                "origin": "Delhi",
+                "destination": "Manali",
+                "days": 5,
+                "budget_inr": 15000,
+                "travelers": 1,
+                "preferences": {"interests": ["adventure"], "food": "any", "style": "budget"},
+                "language": "en",
+            }
+        )
         router = _mock_router(parsed_json)
         state = _base_state()
 
@@ -113,15 +115,17 @@ class TestOrchestratorNode:
         """Orchestrator handles Hindi/Hinglish mixed input."""
         from parikrama.agents.orchestrator import orchestrator_node
 
-        parsed_json = json.dumps({
-            "origin": "Mumbai",
-            "destination": "Goa",
-            "days": 4,
-            "budget_inr": 12000,
-            "travelers": 2,
-            "preferences": {"interests": ["beach"], "food": "any", "style": "budget"},
-            "language": "hinglish",
-        })
+        parsed_json = json.dumps(
+            {
+                "origin": "Mumbai",
+                "destination": "Goa",
+                "days": 4,
+                "budget_inr": 12000,
+                "travelers": 2,
+                "preferences": {"interests": ["beach"], "food": "any", "style": "budget"},
+                "language": "hinglish",
+            }
+        )
         router = _mock_router(parsed_json)
         state = _base_state(raw_input="Mumbai se Goa 4 din ka trip, 12 hazar budget, hum 2 log")
 
@@ -138,15 +142,17 @@ class TestOrchestratorNode:
         """Orchestrator raises ValueError for trips > 30 days."""
         from parikrama.agents.orchestrator import orchestrator_node
 
-        invalid_json = json.dumps({
-            "origin": "Delhi",
-            "destination": "Manali",
-            "days": 45,  # > 30
-            "budget_inr": 50000,
-            "travelers": 1,
-            "preferences": {},
-            "language": "en",
-        })
+        invalid_json = json.dumps(
+            {
+                "origin": "Delhi",
+                "destination": "Manali",
+                "days": 45,  # > 30
+                "budget_inr": 50000,
+                "travelers": 1,
+                "preferences": {},
+                "language": "en",
+            }
+        )
         router = _mock_router(invalid_json)
         state = _base_state()
 
@@ -158,15 +164,17 @@ class TestOrchestratorNode:
         """Orchestrator raises ValueError for budget < ₹1,000."""
         from parikrama.agents.orchestrator import orchestrator_node
 
-        invalid_json = json.dumps({
-            "origin": "Delhi",
-            "destination": "Manali",
-            "days": 3,
-            "budget_inr": 500,  # < 1000
-            "travelers": 1,
-            "preferences": {},
-            "language": "en",
-        })
+        invalid_json = json.dumps(
+            {
+                "origin": "Delhi",
+                "destination": "Manali",
+                "days": 3,
+                "budget_inr": 500,  # < 1000
+                "travelers": 1,
+                "preferences": {},
+                "language": "en",
+            }
+        )
         router = _mock_router(invalid_json)
         state = _base_state()
 
@@ -192,15 +200,17 @@ class TestOrchestratorNode:
         """Orchestrator appends an AgentMessage to state."""
         from parikrama.agents.orchestrator import orchestrator_node
 
-        parsed_json = json.dumps({
-            "origin": "Bangalore",
-            "destination": "Ooty",
-            "days": 3,
-            "budget_inr": 8000,
-            "travelers": 1,
-            "preferences": {},
-            "language": "en",
-        })
+        parsed_json = json.dumps(
+            {
+                "origin": "Bangalore",
+                "destination": "Ooty",
+                "days": 3,
+                "budget_inr": 8000,
+                "travelers": 1,
+                "preferences": {},
+                "language": "en",
+            }
+        )
         router = _mock_router(parsed_json)
         state = _base_state()
 
@@ -238,14 +248,24 @@ class TestResearchNode:
         )
 
         with (
-            patch("parikrama.agents.research_agent._fetch_rag_context", return_value="travel guide content"),
+            patch(
+                "parikrama.agents.research_agent._fetch_rag_context",
+                return_value="travel guide content",
+            ),
             patch(
                 "parikrama.agents.tools.weather.get_weather_forecast",
-                return_value={"location": "Manali", "forecasts": [], "advisory": "Carry warm clothes", "dates": []},
+                return_value={
+                    "location": "Manali",
+                    "forecasts": [],
+                    "advisory": "Carry warm clothes",
+                    "dates": [],
+                },
             ),
             patch(
                 "parikrama.agents.tools.places.search_places",
-                return_value=[{"name": "Rohtang Pass", "type": "scenic", "rating": 4.6, "entry_fee_inr": 550}],
+                return_value=[
+                    {"name": "Rohtang Pass", "type": "scenic", "rating": 4.6, "entry_fee_inr": 550}
+                ],
             ),
         ):
             result = await research_node(state, router, db)
@@ -263,7 +283,14 @@ class TestResearchNode:
         db = AsyncMock()
 
         state = _base_state(
-            request={"origin": "Delhi", "destination": "Manali", "days": 3, "budget_inr": 10000, "travelers": 1, "preferences": {}}
+            request={
+                "origin": "Delhi",
+                "destination": "Manali",
+                "days": 3,
+                "budget_inr": 10000,
+                "travelers": 1,
+                "preferences": {},
+            }
         )
 
         with (
@@ -293,7 +320,14 @@ class TestBookingNode:
         db = AsyncMock()
 
         state = _base_state(
-            request={"origin": "Delhi", "destination": "Manali", "days": 5, "budget_inr": 15000, "travelers": 1, "preferences": {}}
+            request={
+                "origin": "Delhi",
+                "destination": "Manali",
+                "days": 5,
+                "budget_inr": 15000,
+                "travelers": 1,
+                "preferences": {},
+            }
         )
 
         result = await booking_node(state, router, db)
@@ -348,21 +382,30 @@ class TestBudgetOptimizerNode:
         """Budget optimizer sets is_within_budget=True when total < user budget."""
         from parikrama.agents.budget_optimizer import budget_optimizer_node
 
-        breakdown_json = json.dumps({
-            "transport_inr": 1300,
-            "accommodation_inr": 3300,
-            "food_inr": 2000,
-            "activities_inr": 1000,
-            "misc_inr": 500,
-            "total_inr": 8100,
-            "is_within_budget": True,
-            "savings_tips": [],
-        })
+        breakdown_json = json.dumps(
+            {
+                "transport_inr": 1300,
+                "accommodation_inr": 3300,
+                "food_inr": 2000,
+                "activities_inr": 1000,
+                "misc_inr": 500,
+                "total_inr": 8100,
+                "is_within_budget": True,
+                "savings_tips": [],
+            }
+        )
         router = _mock_router(breakdown_json)
         db = AsyncMock()
 
         state = _base_state(
-            request={"origin": "Delhi", "destination": "Manali", "days": 5, "budget_inr": 15000, "travelers": 1, "preferences": {}},
+            request={
+                "origin": "Delhi",
+                "destination": "Manali",
+                "days": 5,
+                "budget_inr": 15000,
+                "travelers": 1,
+                "preferences": {},
+            },
             hotel_options=[{"name": "Hotel A", "price_per_night_inr": 800}],
             transport_options=[{"type": "bus", "price_inr": 650}],
         )
@@ -377,21 +420,30 @@ class TestBudgetOptimizerNode:
         """Budget optimizer sets is_within_budget=False when over budget."""
         from parikrama.agents.budget_optimizer import budget_optimizer_node
 
-        breakdown_json = json.dumps({
-            "transport_inr": 9000,
-            "accommodation_inr": 15000,
-            "food_inr": 5000,
-            "activities_inr": 2000,
-            "misc_inr": 1000,
-            "total_inr": 32000,
-            "is_within_budget": False,
-            "savings_tips": ["Take bus instead of flight", "Stay in hostel"],
-        })
+        breakdown_json = json.dumps(
+            {
+                "transport_inr": 9000,
+                "accommodation_inr": 15000,
+                "food_inr": 5000,
+                "activities_inr": 2000,
+                "misc_inr": 1000,
+                "total_inr": 32000,
+                "is_within_budget": False,
+                "savings_tips": ["Take bus instead of flight", "Stay in hostel"],
+            }
+        )
         router = _mock_router(breakdown_json)
         db = AsyncMock()
 
         state = _base_state(
-            request={"origin": "Delhi", "destination": "Manali", "days": 5, "budget_inr": 15000, "travelers": 1, "preferences": {}},
+            request={
+                "origin": "Delhi",
+                "destination": "Manali",
+                "days": 5,
+                "budget_inr": 15000,
+                "travelers": 1,
+                "preferences": {},
+            },
         )
 
         result = await budget_optimizer_node(state, router, db)

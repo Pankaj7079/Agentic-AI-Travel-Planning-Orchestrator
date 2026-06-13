@@ -80,7 +80,9 @@ async def itinerary_finalizer_node(
     context = _compile_full_context(state)
 
     # Generate itinerary via LLM
-    itinerary, raw_response = await _generate_itinerary(context, days, destination, llm_router, errors)
+    itinerary, raw_response = await _generate_itinerary(
+        context, days, destination, llm_router, errors
+    )
 
     # Generate one-paragraph summary
     summary = _generate_summary(request, state, itinerary, raw_response)
@@ -133,7 +135,10 @@ def _compile_full_context(state: TripPlanningState) -> str:
         forecasts = weather.get("forecasts", [])
         if forecasts:
             temp_summary = ", ".join(
-                [f"Day {i+1}: {f['temp_min']}-{f['temp_max']}C" for i, f in enumerate(forecasts[:5])]
+                [
+                    f"Day {i + 1}: {f['temp_min']}-{f['temp_max']}C"
+                    for i, f in enumerate(forecasts[:5])
+                ]
             )
             parts.append(f"\nWeather: {temp_summary}")
         if advisory:
@@ -207,7 +212,10 @@ async def _generate_itinerary(
         if not isinstance(parsed, list):
             raise ValueError(f"Expected JSON array, got {type(parsed).__name__}")
 
-        day_plans = [DayPlan(**{k: v for k, v in day.items() if k in DayPlan.__annotations__}) for day in parsed]
+        day_plans = [
+            DayPlan(**{k: v for k, v in day.items() if k in DayPlan.__annotations__})
+            for day in parsed
+        ]
         return day_plans, response.content
 
     except (json.JSONDecodeError, ValueError, KeyError) as exc:
@@ -246,8 +254,12 @@ def _generate_summary(
         )
     else:
         # LLM returned non-JSON (markdown) — use raw response as summary
-        return raw_response[:1000] if raw_response else (
-            f"Your {days}-day trip to {dest} has been planned within your ₹{budget:,.0f} budget."
+        return (
+            raw_response[:1000]
+            if raw_response
+            else (
+                f"Your {days}-day trip to {dest} has been planned within your ₹{budget:,.0f} budget."
+            )
         )
 
 

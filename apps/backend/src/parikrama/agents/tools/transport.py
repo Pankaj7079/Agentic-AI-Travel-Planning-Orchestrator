@@ -14,16 +14,56 @@ logger = structlog.get_logger(__name__)
 
 # Approximate distance/duration lookup for common Indian routes (km, hours)
 _ROUTE_PROFILES: dict[str, dict] = {
-    "delhi_manali": {"distance_km": 545, "bus_hours": 14, "train_available": False, "flight_available": False},
-    "delhi_shimla": {"distance_km": 370, "bus_hours": 10, "train_available": True, "flight_available": False},
-    "delhi_jaipur": {"distance_km": 280, "bus_hours": 6, "train_available": True, "flight_available": True},
-    "mumbai_goa": {"distance_km": 590, "bus_hours": 12, "train_available": True, "flight_available": True},
-    "mumbai_pune": {"distance_km": 150, "bus_hours": 4, "train_available": True, "flight_available": False},
-    "bangalore_mysore": {"distance_km": 145, "bus_hours": 3, "train_available": True, "flight_available": False},
-    "bangalore_ooty": {"distance_km": 270, "bus_hours": 6, "train_available": False, "flight_available": False},
+    "delhi_manali": {
+        "distance_km": 545,
+        "bus_hours": 14,
+        "train_available": False,
+        "flight_available": False,
+    },
+    "delhi_shimla": {
+        "distance_km": 370,
+        "bus_hours": 10,
+        "train_available": True,
+        "flight_available": False,
+    },
+    "delhi_jaipur": {
+        "distance_km": 280,
+        "bus_hours": 6,
+        "train_available": True,
+        "flight_available": True,
+    },
+    "mumbai_goa": {
+        "distance_km": 590,
+        "bus_hours": 12,
+        "train_available": True,
+        "flight_available": True,
+    },
+    "mumbai_pune": {
+        "distance_km": 150,
+        "bus_hours": 4,
+        "train_available": True,
+        "flight_available": False,
+    },
+    "bangalore_mysore": {
+        "distance_km": 145,
+        "bus_hours": 3,
+        "train_available": True,
+        "flight_available": False,
+    },
+    "bangalore_ooty": {
+        "distance_km": 270,
+        "bus_hours": 6,
+        "train_available": False,
+        "flight_available": False,
+    },
 }
 
-_DEFAULT_PROFILE = {"distance_km": 400, "bus_hours": 10, "train_available": True, "flight_available": False}
+_DEFAULT_PROFILE = {
+    "distance_km": 400,
+    "bus_hours": 10,
+    "train_available": True,
+    "flight_available": False,
+}
 
 
 async def search_transport(

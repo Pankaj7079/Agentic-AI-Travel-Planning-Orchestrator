@@ -86,7 +86,9 @@ async def budget_optimizer_node(
     retry_num = state.get("_budget_retries", 0)
     if retry_num > 0:
         messages.append(
-            AgentMessage(agent="budget_optimizer", content=f"Budget re-optimization attempt #{retry_num}")
+            AgentMessage(
+                agent="budget_optimizer", content=f"Budget re-optimization attempt #{retry_num}"
+            )
         )
 
     total_est = breakdown.get("total_inr", 0) if breakdown else 0

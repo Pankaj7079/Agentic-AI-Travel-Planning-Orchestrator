@@ -81,7 +81,6 @@ class Settings(BaseSettings):
     OPENWEATHERMAP_API_KEY: str = ""  # Free tier: 1,000 calls/day
     GOOGLE_PLACES_API_KEY: str = ""  # Optional: enhances place search
 
-
     # -- Notifications --
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "noreply@parikrama.dev"
