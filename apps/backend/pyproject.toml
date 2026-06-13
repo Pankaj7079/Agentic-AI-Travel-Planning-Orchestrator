@@ -56,6 +56,9 @@ dependencies = [
     "langgraph>=0.2",
     "langchain-core>=0.2",
 
+    # -- Phase 5: Notifications --
+    "resend>=2.0",
+
     # -- Shared --
     "parikrama-common",
 ]

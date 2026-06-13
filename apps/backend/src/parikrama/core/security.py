@@ -4,8 +4,11 @@ Security utilities — JWT tokens, password hashing, and auth dependencies.
 All authentication flows go through this module.
 """
 
+from __future__ import annotations
+
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import bcrypt
 import structlog
@@ -15,6 +18,9 @@ from jose import JWTError, jwt
 
 from parikrama.config import settings
 from parikrama.core.exceptions import AuthenticationError
+
+if TYPE_CHECKING:
+    from parikrama.models.user import User
 
 logger = structlog.get_logger()
 
@@ -122,3 +128,34 @@ async def require_admin(user_id: str = Depends(get_current_user_id)) -> str:
     # For now, we trust the role claim in the JWT
     # This will be enhanced in Phase 1 implementation
     return user_id
+
+
+async def get_current_user(
+    user_id: str = Depends(get_current_user_id),
+) -> User:
+    """
+    FastAPI dependency — return the full User ORM object for the authenticated user.
+
+    Opens its own DB session via the get_db generator. Used by endpoints that
+    need user.email, user.fcm_token, or other profile fields
+    (e.g. ApprovalService, NotificationService).
+    """
+    from sqlalchemy import select
+
+    from parikrama.db.session import get_db
+    from parikrama.models.user import User
+
+    # iterate the async generator to get the session
+    session = None
+    async for db in get_db():
+        session = db
+        break
+
+    if session is None:
+        raise AuthenticationError("Database session unavailable")
+
+    result = await session.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise AuthenticationError("User not found")
+    return user

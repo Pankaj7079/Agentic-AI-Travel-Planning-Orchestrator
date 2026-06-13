@@ -63,6 +63,11 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(api_router, prefix="/api")
 
+    # Phase 5 — WebSocket for real-time agent updates
+    from parikrama.api.websocket.routes import router as ws_router
+
+    app.include_router(ws_router)
+
     return app
 
 

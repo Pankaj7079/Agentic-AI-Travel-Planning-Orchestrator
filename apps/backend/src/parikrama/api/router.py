@@ -2,7 +2,18 @@
 
 from fastapi import APIRouter
 
-from parikrama.api.v1 import agents, auth, documents, health, rag, trip_planning, trips, users
+from parikrama.api.v1 import (
+    agents,
+    approvals,
+    auth,
+    documents,
+    health,
+    notifications,
+    rag,
+    trip_planning,
+    trips,
+    users,
+)
 
 api_router = APIRouter()
 
@@ -21,3 +32,7 @@ api_router.include_router(agents.router, prefix="/v1")
 
 # Phase 4 — Multi-agent trip planning pipeline
 api_router.include_router(trip_planning.router, prefix="/v1")
+
+# Phase 5 — HITL + Notifications
+api_router.include_router(approvals.router, prefix="/v1")
+api_router.include_router(notifications.router, prefix="/v1")

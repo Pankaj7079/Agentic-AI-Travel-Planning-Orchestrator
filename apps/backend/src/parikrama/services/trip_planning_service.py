@@ -22,6 +22,7 @@ from sqlalchemy import select
 
 from parikrama.agents.trip_graph import build_trip_planning_graph
 from parikrama.models.trip import AgentRun, Trip
+from parikrama.models.user import User
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,6 +104,61 @@ class TripPlanningService:
             raise RuntimeError(f"Trip planning failed: {exc}") from exc
 
         duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+        # ── HITL gate: approval required before proceeding ──────────────────
+        if final_state.get("requires_approval", False):
+            # persist intermediate result so resume can access it
+            trip.result = {
+                "request": final_state.get("request", {}),
+                "hotel_options": final_state.get("hotel_options", []),
+                "transport_options": final_state.get("transport_options", []),
+                "weather": final_state.get("weather"),
+                "places_of_interest": final_state.get("places_of_interest", []),
+                "destination_info": final_state.get("destination_info", ""),
+                "reviews_summary": final_state.get("reviews_summary", ""),
+            }
+            await self.db.flush()
+
+            # fetch the user object for notifications
+            from sqlalchemy import select
+
+            user_result = await self.db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+            user = user_result.scalar_one()
+
+            # create approval and notify user
+            from parikrama.services.approval_service import ApprovalService
+
+            approval_svc = ApprovalService(self.db)
+            hotels = final_state.get("hotel_options", [])
+            budget = (final_state.get("request") or {}).get("budget_inr", 0)
+            top_hotel = hotels[0] if hotels else {}
+            approval_id = await approval_svc.create_approval(
+                trip_id=trip_id,
+                user=user,
+                approval_type="hotel_booking",
+                title="Hotel exceeds 50% of your budget",
+                description=(
+                    f"{top_hotel.get('name', 'Selected hotel')} costs "
+                    f"Rs.{top_hotel.get('price_per_night_inr', 0)}/night. "
+                    f"Your total budget is Rs.{budget}. Approve to continue planning."
+                ),
+                payload={
+                    "hotel_options": hotels[:3],
+                    "transport_options": final_state.get("transport_options", [])[:3],
+                    "budget_inr": budget,
+                },
+            )
+            await self.db.flush()
+
+            log.info("trip_awaiting_approval", trip_id=trip_id, approval_id=approval_id)
+            return {
+                "trip_id": trip_id,
+                "status": "awaiting_approval",
+                "approval_id": approval_id,
+                "message": "Approval required before finalising itinerary.",
+                "duration_ms": duration_ms,
+                "errors": final_state.get("errors", []),
+            }
 
         # Persist agent run records for observability
         await self._persist_agent_runs(trip_id, final_state, duration_ms)
