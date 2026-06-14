@@ -13,6 +13,7 @@ from parikrama.api.v1 import (
     trip_planning,
     trips,
     users,
+    voice,
 )
 
 api_router = APIRouter()
@@ -36,3 +37,6 @@ api_router.include_router(trip_planning.router, prefix="/v1")
 # Phase 5 — HITL + Notifications
 api_router.include_router(approvals.router, prefix="/v1")
 api_router.include_router(notifications.router, prefix="/v1")
+
+# Phase 6 — Voice Pipeline
+api_router.include_router(voice.router, prefix="/v1")

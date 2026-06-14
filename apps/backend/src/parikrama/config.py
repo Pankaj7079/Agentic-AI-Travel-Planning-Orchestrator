@@ -77,6 +77,13 @@ class Settings(BaseSettings):
     LIVEKIT_API_KEY: str = "devkey"
     LIVEKIT_API_SECRET: str = "secret"
 
+    # -- Voice Pipeline (Phase 6) --
+    WHISPER_MODEL_SIZE: str = "base"  # tiny | base | small | medium
+    TTS_ENGINE: str = "coqui"  # coqui | elevenlabs
+    ELEVENLABS_API_KEY: str = ""  # optional — premium TTS
+    ELEVENLABS_VOICE_ID: str = "Rachel"  # ElevenLabs voice selection
+    VAD_THRESHOLD: float = 0.5  # speech detection sensitivity (0-1)
+
     # -- Phase 4: Agent Tools --
     OPENWEATHERMAP_API_KEY: str = ""  # Free tier: 1,000 calls/day
     GOOGLE_PLACES_API_KEY: str = ""  # Optional: enhances place search

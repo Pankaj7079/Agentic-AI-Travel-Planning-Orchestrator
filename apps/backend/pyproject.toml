@@ -59,6 +59,14 @@ dependencies = [
     # -- Phase 5: Notifications --
     "resend>=2.0",
 
+    # -- Phase 6: Voice Pipeline --
+    "openai-whisper>=20240930",       # local Whisper STT (lazy-loaded)
+    "torch>=2.0",                     # required by Whisper + Silero VAD
+    "livekit>=0.11",                  # LiveKit Python SDK (token generation)
+    "livekit-api>=0.7",               # LiveKit REST API client
+    "soundfile>=0.12",                # audio format read/write
+    "av>=12.0",                       # PyAV — WebM/Opus → PCM decoding
+
     # -- Shared --
     "parikrama-common",
 ]
