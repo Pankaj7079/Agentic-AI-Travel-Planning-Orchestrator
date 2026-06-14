@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { MessageBubble, Message } from "./MessageBubble";
 import { VoiceButton } from "./VoiceButton";
 import { AgentProgress, AgentStatus } from "./AgentProgress";
@@ -11,6 +12,8 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { api } from "@/lib/api";
 
 export function ChatInterface({ tripId }: { tripId?: string }) {
+  const router = useRouter();
+  const [activeTripId, setActiveTripId] = useState<string | undefined>(tripId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -18,10 +21,17 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
   const [pendingApproval, setPendingApproval] = useState<any | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
+  // Sync prop tripId to state
+  useEffect(() => {
+    if (tripId) {
+      setActiveTripId(tripId);
+    }
+  }, [tripId]);
+
   // Initialize WebSocket connection
   useWebSocket();
 
-  // Listen for real-time agent updates
+  // Listen for real-time agent updates and completion
   useEffect(() => {
     const handleAgentUpdate = (e: Event) => {
       const customEvent = e as CustomEvent;
@@ -60,14 +70,33 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
       setPendingApproval(customEvent.detail.approval);
     };
 
+    const handleTripCompleted = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const data = customEvent.detail;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: `Itinerary generated successfully! Redirecting you to your final plan details...`,
+          timestamp: new Date(),
+        },
+      ]);
+      setTimeout(() => {
+        router.push(`/dashboard/trips/${data.trip_id || activeTripId}`);
+      }, 2000);
+    };
+
     window.addEventListener("agent-update", handleAgentUpdate);
     window.addEventListener("approval-request", handleApproval);
+    window.addEventListener("trip-completed", handleTripCompleted);
 
     return () => {
       window.removeEventListener("agent-update", handleAgentUpdate);
       window.removeEventListener("approval-request", handleApproval);
+      window.removeEventListener("trip-completed", handleTripCompleted);
     };
-  }, []);
+  }, [activeTripId, router]);
 
   // Auto-scroll to bottom when messages update
   useEffect(() => {
@@ -86,27 +115,83 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setAgentStatuses([]); // Reset status bar for new planning runs
 
     try {
-      const payload = tripId ? { trip_id: tripId, raw_input: userMessage.content } : { raw_input: userMessage.content };
-      await api.post("/api/v1/trips", payload);
+      let currentTripId = activeTripId;
+
+      // 1. Create a trip skeleton if we don't have one active yet
+      if (!currentTripId) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "system",
+            content: "Initializing trip planning session...",
+            timestamp: new Date(),
+          },
+        ]);
+
+        const createRes = await api.post<any>("/api/v1/trips", {
+          origin: "Delhi",
+          destination: "Manali", // Placeholders to satisfy backend validation
+          days: 5,
+          budget_inr: 15000,
+          travelers: 1,
+          preferences: {
+            interests: [],
+            food_preference: "any",
+            accommodation_type: "any",
+            transport_preference: "any",
+            pace: "moderate",
+            special_requirements: "",
+            language: "en"
+          }
+        });
+
+        if (createRes && createRes.id) {
+          currentTripId = createRes.id;
+          setActiveTripId(createRes.id);
+        } else {
+          throw new Error("Failed to initialize trip record on the server.");
+        }
+      }
 
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "system",
-          content: `Trip planning processing...`,
+          content: "AI travel agents are analyzing your request. Please wait...",
           timestamp: new Date(),
         },
       ]);
-    } catch (error) {
+
+      // 2. Call the plan endpoint with raw natural language input
+      const planRes = await api.post<any>(`/api/v1/trips/${currentTripId}/plan`, {
+        raw_input: userMessage.content,
+      });
+
+      if (planRes.status === "awaiting_approval") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "system",
+            content: `Planning paused: approval required for booking. Check details above.`,
+            timestamp: new Date(),
+          },
+        ]);
+      }
+
+    } catch (error: any) {
+      console.error(error);
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "system",
-          content: "Failed to send request. Please try again.",
+          content: `Failed to plan trip: ${error.message || "Please try again."}`,
           timestamp: new Date(),
         },
       ]);
@@ -128,7 +213,9 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
     if (!pendingApproval) return;
     const endpoint = approved ? "approve" : "reject";
     try {
-      await api.post(`/api/v1/approvals/${pendingApproval.approval_id}/${endpoint}`);
+      await api.post(`/api/v1/approvals/${pendingApproval.approval_id}/${endpoint}`, {
+        modifications: null
+      });
       setPendingApproval(null);
     } catch (error) {
       console.error("Failed to submit approval", error);

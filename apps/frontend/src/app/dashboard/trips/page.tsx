@@ -37,8 +37,18 @@ export default function TripsPage() {
   useEffect(() => {
     async function loadTrips() {
       try {
-        const data = await api.get<TripSummary[]>("/api/v1/trips");
-        setTrips(data || []);
+        const data = await api.get<any>("/api/v1/trips");
+        const items = data?.items || [];
+        const formatted = items.map((t: any) => ({
+          id: t.id,
+          title: t.request?.destination ? `Trip to ${t.request.destination}` : "Untitled Trip",
+          destination: t.request?.destination || "Destination TBD",
+          start_date: t.request?.start_date || "",
+          end_date: "",
+          status: t.status,
+          created_at: t.created_at
+        }));
+        setTrips(formatted);
       } catch (err) {
         console.error("Failed to load trips", err);
       } finally {

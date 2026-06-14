@@ -59,6 +59,16 @@ async def booking_node(
     total_budget = float(request.get("budget_inr", 10000))
     errors: list[str] = list(state.get("errors", []))
 
+    # Broadcast to WebSocket
+    from parikrama.api.websocket.manager import ws_manager
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="booking",
+        status="running",
+        message=f"Booking Agent started: Searching hotels and transport options from {origin} to {destination}...",
+    )
+
     # Allocate budget portions for search filtering
     transport_budget = total_budget * 0.35  # ~35% for transport
     hotel_budget_per_night = (total_budget * 0.35) / max(days, 1)  # ~35% for hotel
@@ -89,6 +99,15 @@ async def booking_node(
         hotels=len(hotels_result),
         transport=len(transport_result),
         requires_approval=requires_approval,
+    )
+
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="booking",
+        status="completed",
+        message=f"Booking complete: found {len(hotels_result)} hotels and {len(transport_result)} transport options. " +
+                ("Requires approval for higher-tier options." if requires_approval else "All options within budget."),
     )
 
     return {

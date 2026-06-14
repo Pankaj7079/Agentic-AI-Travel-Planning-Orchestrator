@@ -75,6 +75,16 @@ async def budget_optimizer_node(
     days = int(request.get("days", 3))
     errors: list[str] = list(state.get("errors", []))
 
+    # Broadcast to WebSocket
+    from parikrama.api.websocket.manager import ws_manager
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="budget_optimizer",
+        status="running",
+        message=f"Budget Optimizer starting: Calculating detailed cost breakdown for ₹{total_budget:,.0f} budget...",
+    )
+
     # Build context from all available data
     context = _build_budget_context(state, request, total_budget, days)
 
@@ -107,6 +117,15 @@ async def budget_optimizer_node(
         estimated_total=total_est,
         user_budget=total_budget,
         is_within_budget=is_within,
+    )
+
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="budget_optimizer",
+        status="completed",
+        message=f"Budget calculation complete: Estimated ₹{total_est:,.0f} (" +
+                ("within budget" if is_within else "exceeds budget, applied cost-saving tips") + ").",
     )
 
     return {

@@ -1,26 +1,124 @@
 "use client";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/stores/authStore";
+import { api } from "@/lib/api";
 import {
   ArrowRight, Map, Compass, Zap, TrendingUp,
   Clock, CheckCircle, AlertTriangle, PlusCircle
 } from "lucide-react";
 
-const ACTIVITY = [
-  { icon: CheckCircle, color: "text-emerald-400", text: "Research Agent completed destination analysis", sub: "Trip to Kyoto • 2 hours ago", status: "success" },
-  { icon: AlertTriangle, color: "text-amber-400", text: "Logistics Agent needs flight approval", sub: "Trip to Kyoto • 5 hours ago", status: "warning" },
-  { icon: CheckCircle, color: "text-emerald-400", text: "Budget Agent finalized cost breakdown", sub: "Trip to Goa • 1 day ago", status: "success" },
-  { icon: Zap, color: "text-primary", text: "Trip finalized and saved", sub: "Trip to Rajasthan • 2 days ago", status: "info" },
-];
-
 export default function DashboardHome() {
   const { user } = useAuthStore();
+  const [stats, setStats] = useState<any>(null);
+  const [activeCount, setActiveCount] = useState<number>(0);
+  const [approvalsCount, setApprovalsCount] = useState<number>(0);
+  const [recentTrips, setRecentTrips] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        const [statsData, planningTrips, approvalsData, recentTripsData] = await Promise.all([
+          api.get<any>("/api/v1/users/me/stats").catch(() => ({ total_trips: 0, completed_trips: 0, total_cost_usd: 0 })),
+          api.get<any>("/api/v1/trips?status=planning").catch(() => ({ total: 0 })),
+          api.get<any>("/api/v1/approvals").catch(() => []),
+          api.get<any>("/api/v1/trips?page_size=5").catch(() => ({ items: [] }))
+        ]);
+        setStats(statsData);
+        setActiveCount(planningTrips?.total ?? 0);
+        setApprovalsCount(approvalsData?.length ?? 0);
+        setRecentTrips(recentTripsData?.items || []);
+      } catch (err) {
+        console.error("Failed to load dashboard data", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadDashboardData();
+  }, []);
+
   const greeting = () => {
     const h = new Date().getHours();
     if (h < 12) return "Good morning";
     if (h < 17) return "Good afternoon";
     return "Good evening";
   };
+
+  const formatCost = (usd: number) => {
+    const inr = usd * 83;
+    if (inr >= 1000) {
+      return `₹${(inr / 1000).toFixed(1)}K`;
+    }
+    return `₹${inr.toFixed(0)}`;
+  };
+
+  const getActivities = () => {
+    if (recentTrips.length === 0) {
+      return [
+        {
+          icon: Zap,
+          color: "text-primary",
+          text: "Welcome to PariKrama!",
+          sub: "Start a new trip to watch AI Agents plan in real-time.",
+          link: "/dashboard/trips/new"
+        }
+      ];
+    }
+    return recentTrips.map(trip => {
+      const destination = trip.request?.destination || "Unknown Destination";
+      const relativeTime = new Date(trip.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+      
+      if (trip.status === "completed") {
+        return {
+          icon: CheckCircle,
+          color: "text-emerald-400",
+          text: `Itinerary finalized for ${destination}`,
+          sub: `Trip completed • ${relativeTime}`,
+          link: `/dashboard/trips/${trip.id}`
+        };
+      } else if (trip.status === "planning") {
+        return {
+          icon: Compass,
+          color: "text-cyan-400 animate-spin",
+          text: `AI Agents planning your trip to ${destination}`,
+          sub: `Running nodes... • ${relativeTime}`,
+          link: `/dashboard/trips/new?tripId=${trip.id}`
+        };
+      } else if (trip.status === "awaiting_approval") {
+        return {
+          icon: AlertTriangle,
+          color: "text-amber-400 animate-pulse",
+          text: `Approval required for ${destination}`,
+          sub: `HITL decision pending • ${relativeTime}`,
+          link: `/dashboard/trips/new?tripId=${trip.id}`
+        };
+      } else if (trip.status === "failed") {
+        return {
+          icon: AlertTriangle,
+          color: "text-rose-400",
+          text: `Planning failed for ${destination}`,
+          sub: `Error occurred • ${relativeTime}`,
+          link: `/dashboard/trips/new?tripId=${trip.id}`
+        };
+      } else {
+        return {
+          icon: Clock,
+          color: "text-muted-foreground",
+          text: `Trip to ${destination} is pending`,
+          sub: `Queued • ${relativeTime}`,
+          link: `/dashboard/trips/${trip.id}`
+        };
+      }
+    });
+  };
+
+  const statsList = [
+    { icon: Map, label: "Total Trips", value: loading ? "..." : (stats?.total_trips ?? 0).toString(), change: `${stats?.completed_trips ?? 0} completed`, color: "from-violet-500 to-indigo-500", glow: "rgba(139,92,246,0.25)" },
+    { icon: Compass, label: "Active Agents", value: loading ? "..." : activeCount.toString(), change: "Currently planning", color: "from-cyan-500 to-blue-500", glow: "rgba(34,211,238,0.25)" },
+    { icon: AlertTriangle, label: "Approvals", value: loading ? "..." : approvalsCount.toString(), change: "Action required", color: "from-amber-500 to-orange-500", glow: "rgba(245,158,11,0.25)" },
+    { icon: TrendingUp, label: "Total Budget", value: loading ? "..." : formatCost(stats?.total_cost_usd || 0), change: "Estimated costs", color: "from-emerald-500 to-teal-500", glow: "rgba(16,185,129,0.25)" },
+  ];
 
   return (
     <div className="flex flex-col gap-8 max-w-6xl mx-auto w-full pb-8">
@@ -43,12 +141,7 @@ export default function DashboardHome() {
 
       {/* ── STATS ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { icon: Map, label: "Total Trips", value: "12", change: "+2 this month", color: "from-violet-500 to-indigo-500", glow: "rgba(139,92,246,0.25)" },
-          { icon: Compass, label: "Active Agents", value: "3", change: "Currently planning", color: "from-cyan-500 to-blue-500", glow: "rgba(34,211,238,0.25)" },
-          { icon: AlertTriangle, label: "Approvals", value: "1", change: "Action required", color: "from-amber-500 to-orange-500", glow: "rgba(245,158,11,0.25)" },
-          { icon: TrendingUp, label: "Total Budget", value: "₹24.5K", change: "Estimated costs", color: "from-emerald-500 to-teal-500", glow: "rgba(16,185,129,0.25)" },
-        ].map(stat => (
+        {statsList.map(stat => (
           <div
             key={stat.label}
             className="glass rounded-2xl p-5 border border-white/5 hover:border-white/10 transition-all group cursor-default"
@@ -83,18 +176,19 @@ export default function DashboardHome() {
             </div>
           </div>
           <div className="p-5 space-y-4">
-            {ACTIVITY.map((item, i) => (
-              <div key={i} className="flex items-start gap-3 group">
+            {getActivities().map((item, i) => (
+              <Link key={i} href={item.link} className="flex items-start gap-3 group hover:bg-white/5 p-2 rounded-xl transition-colors">
                 <div className={`mt-0.5 flex-shrink-0 ${item.color}`}>
                   <item.icon className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium leading-none mb-1">{item.text}</p>
+                  <p className="text-sm font-medium leading-none mb-1 group-hover:text-primary transition-colors">{item.text}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <Clock className="h-3 w-3" /> {item.sub}
                   </p>
                 </div>
-              </div>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+              </Link>
             ))}
           </div>
         </div>

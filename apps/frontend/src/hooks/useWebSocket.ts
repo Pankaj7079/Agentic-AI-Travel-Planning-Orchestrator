@@ -18,14 +18,16 @@ export function useWebSocket() {
     if (!accessToken || !user) return;
 
     // connect to backend WebSocket
-    // Since our backend uses standard WebSockets (FastAPI WebSocket) rather than socket.io on the hitl route,
-    // wait, FastAPI WebSockets are raw ws://. `socket.io-client` won't connect natively to FastAPI WebSockets
-    // unless FastAPI runs python-socketio. Looking at the Phase 5 hitl/notifications.py, we used standard FastAPI `WebSocket`.
-    // Let me fallback to native browser WebSocket for native implementation if socket.io doesn't work,
-    // but the plan used socket.io. To ensure compatibility with standard FastAPI WebSocket, I'll use native WebSocket.
+    const getWsUrl = () => {
+      if (typeof window !== "undefined") {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        return `${protocol}//${window.location.hostname}:8000`;
+      }
+      return process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+    };
 
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
-    const ws = new WebSocket(`${wsUrl}/api/v1/notifications/ws?token=${accessToken}`);
+    const wsUrl = getWsUrl();
+    const ws = new WebSocket(`${wsUrl}/ws/${user.id}?token=${accessToken}`);
 
     ws.onopen = () => {
       console.log("WebSocket connected");
@@ -41,6 +43,9 @@ export function useWebSocket() {
             break;
           case "approval_request":
             window.dispatchEvent(new CustomEvent("approval-request", { detail: data }));
+            break;
+          case "trip_completed":
+            window.dispatchEvent(new CustomEvent("trip-completed", { detail: data }));
             break;
           case "notification":
             addNotification(data as any);

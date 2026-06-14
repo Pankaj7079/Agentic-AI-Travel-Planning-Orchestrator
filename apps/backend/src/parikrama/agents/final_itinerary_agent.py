@@ -76,6 +76,16 @@ async def itinerary_finalizer_node(
     total_budget = float(request.get("budget_inr", 10000))
     errors: list[str] = list(state.get("errors", []))
 
+    # Broadcast to WebSocket
+    from parikrama.api.websocket.manager import ws_manager
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="itinerary_finalizer",
+        status="running",
+        message=f"Itinerary Finalizer starting: Generating day-by-day travel plan for {days} days in {destination}...",
+    )
+
     # Compile all available data into a rich context
     context = _compile_full_context(state)
 
@@ -100,6 +110,14 @@ async def itinerary_finalizer_node(
         destination=destination,
         days_planned=len(itinerary),
         budget=total_budget,
+    )
+
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="itinerary_finalizer",
+        status="completed",
+        message=f"Itinerary generation complete! Planned {len(itinerary)} days for {destination}.",
     )
 
     return {

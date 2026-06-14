@@ -9,11 +9,28 @@ import { DayPlan } from "@/components/trip/DayCard"
 
 interface TripDetail {
   id: string
-  title: string
-  destination: string
   status: string
-  itinerary: any
-  budget: number
+  request: {
+    origin: string
+    destination: string
+    days: number
+    budget_inr: number
+    travelers: number
+    start_date?: string | null
+  }
+  result?: {
+    itinerary?: any[]
+    budget_breakdown?: {
+      transport_inr: number
+      accommodation_inr: number
+      food_inr: number
+      activities_inr: number
+      misc_inr: number
+      total_inr: number
+    }
+    summary?: string
+  } | null
+  total_cost_usd: number
 }
 
 // Ensure the page takes params correctly for Next.js app router
@@ -59,32 +76,38 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   // Map the backend itinerary JSON to the expected DayPlan format
-  // We assume the backend stores itinerary in `trip.itinerary.days`
-  const itineraryDays: DayPlan[] = trip.itinerary?.days?.map((d: any, idx: number) => ({
-    day: d.day_number || idx + 1,
-    title: d.theme || d.title || `Day ${idx + 1}`,
+  const itineraryDays: DayPlan[] = trip.result?.itinerary?.map((d: any, idx: number) => ({
+    day: d.day || idx + 1,
+    title: d.title || `Day ${idx + 1}`,
     activities: d.activities?.map((a: any) => ({
       time: a.time || "TBD",
-      activity: a.title || a.description,
+      activity: a.activity || a.description || "TBD",
       location: a.location || "TBD",
-      cost_inr: a.cost || 0
+      cost_inr: a.cost_inr || a.cost || 0
     })) || [],
     meals: d.meals?.map((m: any) => ({
       time: m.time || "Meal",
-      suggestion: m.suggestion || m.description,
-      estimated_cost_inr: m.cost || 0
+      suggestion: m.suggestion || m.description || "TBD",
+      estimated_cost_inr: m.estimated_cost_inr || m.cost || 0
     })) || [],
     tips: d.tips || []
   })) || []
 
-  // Create a mock budget breakdown if the backend just provides a total
-  // Or map the actual budget breakdown if available
-  const budgetBreakdown = trip.itinerary?.budget_breakdown || [
-    { category: "Flights/Transport", amount: trip.budget * 0.4, percentage: 40 },
-    { category: "Accommodation", amount: trip.budget * 0.3, percentage: 30 },
-    { category: "Food & Dining", amount: trip.budget * 0.15, percentage: 15 },
-    { category: "Activities", amount: trip.budget * 0.1, percentage: 10 },
-    { category: "Miscellaneous", amount: trip.budget * 0.05, percentage: 5 },
+  // Map the actual budget breakdown if available
+  const totalCost = trip.result?.budget_breakdown?.total_inr || trip.request?.budget_inr || 0;
+  const breakdownData = trip.result?.budget_breakdown;
+  const budgetBreakdown = breakdownData ? [
+    { category: "Flights/Transport", amount: breakdownData.transport_inr, percentage: totalCost > 0 ? Math.round((breakdownData.transport_inr / totalCost) * 100) : 0 },
+    { category: "Accommodation", amount: breakdownData.accommodation_inr, percentage: totalCost > 0 ? Math.round((breakdownData.accommodation_inr / totalCost) * 100) : 0 },
+    { category: "Food & Dining", amount: breakdownData.food_inr, percentage: totalCost > 0 ? Math.round((breakdownData.food_inr / totalCost) * 100) : 0 },
+    { category: "Activities", amount: breakdownData.activities_inr, percentage: totalCost > 0 ? Math.round((breakdownData.activities_inr / totalCost) * 100) : 0 },
+    { category: "Miscellaneous", amount: breakdownData.misc_inr, percentage: totalCost > 0 ? Math.round((breakdownData.misc_inr / totalCost) * 100) : 0 },
+  ] : [
+    { category: "Flights/Transport", amount: totalCost * 0.4, percentage: 40 },
+    { category: "Accommodation", amount: totalCost * 0.3, percentage: 30 },
+    { category: "Food & Dining", amount: totalCost * 0.15, percentage: 15 },
+    { category: "Activities", amount: totalCost * 0.1, percentage: 10 },
+    { category: "Miscellaneous", amount: totalCost * 0.05, percentage: 5 },
   ]
 
   return (
@@ -94,7 +117,7 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
           <ArrowLeft className="h-4 w-4" /> Back to Trips
         </Button>
         {trip.status !== "completed" && (
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => router.push(`/dashboard/trips/new?tripId=${trip.id}`)}>
             <Edit className="h-4 w-4" /> Continue Planning
           </Button>
         )}
@@ -104,8 +127,8 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
         tripId={id}
         itinerary={itineraryDays}
         budgetBreakdown={budgetBreakdown}
-        totalCost={trip.budget || 0}
-        summary={`A ${itineraryDays.length}-day trip to ${trip.destination || 'your selected destination'}.`}
+        totalCost={totalCost}
+        summary={trip.result?.summary || `A ${itineraryDays.length || trip.request?.days || 3}-day trip to ${trip.request?.destination || 'your selected destination'}.`}
       />
     </div>
   )

@@ -1,9 +1,14 @@
 "use client";
+import { Suspense } from "react";
 import { ChatInterface } from "@/components/chat/ChatInterface";
-import { ArrowLeft, Mic, Sparkles } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
-export default function NewTripPage() {
+function NewTripContent() {
+  const searchParams = useSearchParams();
+  const tripId = searchParams.get("tripId");
+
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto w-full gap-4">
       {/* Header */}
@@ -31,8 +36,20 @@ export default function NewTripPage() {
 
       {/* Chat area */}
       <div className="flex-1 min-h-[500px]">
-        <ChatInterface />
+        <ChatInterface tripId={tripId || undefined} />
       </div>
     </div>
+  );
+}
+
+export default function NewTripPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex justify-center items-center h-full min-h-[500px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <NewTripContent />
+    </Suspense>
   );
 }

@@ -79,6 +79,16 @@ async def research_node(
     days = request.get("days", 3)
     errors: list[str] = list(state.get("errors", []))
 
+    # Broadcast to WebSocket
+    from parikrama.api.websocket.manager import ws_manager
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="research",
+        status="running",
+        message=f"Research Agent started: Gathering weather forecasts and tourist spots for {destination}...",
+    )
+
     # ── Run tools concurrently ────────────────────────────────────────────────
     weather_result, places_result, rag_result = await asyncio.gather(
         _fetch_weather(destination, days, errors),
@@ -111,6 +121,14 @@ async def research_node(
         places_count=len(places_result),
         rag_chars=len(rag_result),
         brief_chars=len(research_brief),
+    )
+
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="research",
+        status="completed",
+        message=f"Research complete: found weather advisory and {len(places_result)} top places for {destination}.",
     )
 
     return {

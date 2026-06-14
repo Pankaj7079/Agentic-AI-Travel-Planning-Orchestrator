@@ -75,6 +75,16 @@ async def orchestrator_node(
     if not raw_input:
         raise ValueError("raw_input is empty — cannot parse trip request")
 
+    # Broadcast to WebSocket
+    from parikrama.api.websocket.manager import ws_manager
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="orchestrator",
+        status="running",
+        message="Orchestrator Agent starting: Parsing natural language request...",
+    )
+
     # Call LLM to extract structured intent
     response = await llm_router.generate(
         prompt=f"Parse this travel request into the required JSON:\n\n{raw_input}",
@@ -89,6 +99,13 @@ async def orchestrator_node(
         parsed = json.loads(raw_json)
     except json.JSONDecodeError as exc:
         log.error("orchestrator_json_parse_failed", error=str(exc), raw=response.content[:300])
+        await ws_manager.broadcast_agent_update(
+            user_id=state["user_id"],
+            trip_id=state["trip_id"],
+            agent="orchestrator",
+            status="failed",
+            message="Orchestrator Agent failed to parse request.",
+        )
         raise ValueError(f"OrchestratorAgent: LLM returned invalid JSON: {exc}") from exc
 
     # Build typed TripRequest
@@ -125,6 +142,14 @@ async def orchestrator_node(
         destination=trip_request["destination"],
         days=trip_request["days"],
         budget=trip_request["budget_inr"],
+    )
+
+    await ws_manager.broadcast_agent_update(
+        user_id=state["user_id"],
+        trip_id=state["trip_id"],
+        agent="orchestrator",
+        status="completed",
+        message=f"Orchestration parsed request: {trip_request['days']}-day trip from {trip_request['origin']} to {trip_request['destination']}.",
     )
 
     return {
