@@ -389,11 +389,12 @@ class TestLiveKitManager:
         mock_room.name = "voice-abc-123"
         mock_room.sid = "RM_test123"
 
-        with patch("parikrama.voice.livekit_manager.LiveKitAPI") as mock_lk_cls:
-            mock_lk = AsyncMock()
-            mock_lk_cls.return_value = mock_lk
-            mock_lk.room.create_room = AsyncMock(return_value=mock_room)
+        # LiveKitAPI is imported lazily inside the method body (from livekit.api import LiveKitAPI)
+        # so we patch it at the source module, not at the livekit_manager namespace.
+        mock_lk_instance = AsyncMock()
+        mock_lk_instance.room.create_room = AsyncMock(return_value=mock_room)
 
+        with patch("livekit.api.LiveKitAPI", return_value=mock_lk_instance):
             result = await manager.create_room("voice-abc-123")
 
         assert result["name"] == "voice-abc-123"
