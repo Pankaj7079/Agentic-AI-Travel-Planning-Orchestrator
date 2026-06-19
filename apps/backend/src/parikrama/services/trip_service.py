@@ -146,7 +146,7 @@ class TripService:
 
         # calculate progress based on status
         progress_map = {
-            "pending": 0,
+            "pending": 5,
             "planning": 40,
             "awaiting_approval": 75,
             "approved": 90,
@@ -155,13 +155,29 @@ class TripService:
             "cancelled": 0,
         }
 
+        # Look for pending approval id
+        approval_id = None
+        if trip.status == "awaiting_approval":
+            from parikrama.models.approval import ApprovalRequest
+            approvals_result = await self.db.execute(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.trip_id == trip.id,
+                    ApprovalRequest.status == "pending",
+                ).order_by(ApprovalRequest.created_at.desc()).limit(1)
+            )
+            approval = approvals_result.scalar_one_or_none()
+            if approval:
+                approval_id = str(approval.id)
+
         return {
             "trip_id": str(trip.id),
             "status": trip.status,
             "current_agent": latest_run.agent_name if latest_run else None,
             "progress_percent": progress_map.get(trip.status, 0),
             "message": _status_message(trip.status, latest_run),
-            "is_complete": trip.status in ("completed", "failed", "cancelled"),
+            "is_complete": trip.status in ("completed", "failed", "cancelled", "awaiting_approval"),
+            "approval_id": approval_id,
+            "has_result": bool(trip.result and trip.result.get("itinerary")),
         }
 
     # ── Private helpers ───────────────────────────────────────────────

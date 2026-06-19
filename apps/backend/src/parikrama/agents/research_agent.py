@@ -77,7 +77,7 @@ async def research_node(
     request = state.get("request", {})
     destination = request.get("destination", "")
     days = request.get("days", 3)
-    errors: list[str] = list(state.get("errors", []))
+    errors: list[str] = []  # only NEW errors from this node
 
     # Broadcast to WebSocket
     from parikrama.api.websocket.manager import ws_manager
@@ -132,7 +132,10 @@ async def research_node(
     )
 
     return {
-        **state,
+        # ONLY return keys this node writes — do NOT spread **state
+        # LangGraph merges node outputs, so returning **state in a parallel node
+        # causes INVALID_CONCURRENT_GRAPH_UPDATE because both research and booking
+        # would try to write to trip_id, user_id, etc. simultaneously.
         "weather": weather_result,
         "places_of_interest": places_result,
         "destination_info": rag_result,

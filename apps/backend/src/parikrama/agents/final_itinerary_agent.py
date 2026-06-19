@@ -74,7 +74,7 @@ async def itinerary_finalizer_node(
     days = int(request.get("days", 3))
     destination = request.get("destination", "")
     total_budget = float(request.get("budget_inr", 10000))
-    errors: list[str] = list(state.get("errors", []))
+    errors: list[str] = []  # only NEW errors from this node
 
     # Broadcast to WebSocket
     from parikrama.api.websocket.manager import ws_manager
@@ -97,13 +97,14 @@ async def itinerary_finalizer_node(
     # Generate one-paragraph summary
     summary = _generate_summary(request, state, itinerary, raw_response)
 
-    messages: list[AgentMessage] = list(state.get("messages", []))
-    messages.append(
+    # Return only new items — messages/errors are Annotated[list, operator.add]
+    # LangGraph concatenates these onto the existing lists.
+    new_messages: list[AgentMessage] = [
         AgentMessage(
             agent="itinerary_finalizer",
             content=f"Itinerary complete: {len(itinerary)} days planned for {destination}",
         )
-    )
+    ]
 
     log.info(
         "itinerary_finalizer_completed",
@@ -126,8 +127,8 @@ async def itinerary_finalizer_node(
         "summary": summary,
         "status": "completed",
         "current_agent": "itinerary_finalizer",
-        "messages": messages,
-        "errors": errors,
+        "messages": new_messages,  # only new — LangGraph adds to existing
+        "errors": errors,           # only new errors
     }
 
 

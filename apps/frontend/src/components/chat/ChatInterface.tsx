@@ -1,15 +1,43 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { MessageBubble, Message } from "./MessageBubble";
-import { VoiceButton } from "./VoiceButton";
-import { AgentProgress, AgentStatus } from "./AgentProgress";
-import { ApprovalCard } from "./ApprovalCard";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Send } from "lucide-react";
-import { useWebSocket } from "@/hooks/useWebSocket";
 import { api } from "@/lib/api";
+import {
+  Send, Sparkles, Map, Compass, Bot, User, AlertCircle,
+  CheckCircle, Clock, Loader2, Plane, Hotel, DollarSign,
+  Calendar, Mic, MicOff, RotateCcw, ChevronRight
+} from "lucide-react";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant" | "system" | "agent";
+  content: string;
+  timestamp: Date;
+  agent?: string;
+  isError?: boolean;
+}
+
+interface AgentStatus {
+  name: string;
+  label: string;
+  status: "pending" | "running" | "completed" | "failed";
+  icon: any;
+}
+
+const AGENT_DEFS: AgentStatus[] = [
+  { name: "orchestrator", label: "Parsing Request", status: "pending", icon: Compass },
+  { name: "research", label: "Researching Destination", status: "pending", icon: Map },
+  { name: "booking", label: "Finding Hotels & Transport", status: "pending", icon: Hotel },
+  { name: "budget_optimizer", label: "Optimizing Budget", status: "pending", icon: DollarSign },
+  { name: "itinerary_finalizer", label: "Crafting Itinerary", status: "pending", icon: Calendar },
+];
+
+const WELCOME_SUGGESTIONS = [
+  "Plan a 5-day trip to Manali from Delhi under ₹15,000",
+  "Budget trip to Goa for 3 days from Mumbai",
+  "Explore Rajasthan in 7 days, couple trip, ₹40,000",
+  "Quick weekend trip to Coorg from Bangalore",
+];
 
 export function ChatInterface({ tripId }: { tripId?: string }) {
   const router = useRouter();
@@ -17,124 +45,109 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [agentStatuses, setAgentStatuses] = useState<AgentStatus[]>([]);
-  const [pendingApproval, setPendingApproval] = useState<any | null>(null);
+  const [agents, setAgents] = useState<AgentStatus[]>([...AGENT_DEFS]);
+  const [showAgents, setShowAgents] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState<any>(null);
+  const [planningDone, setPlanningDone] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // Sync prop tripId to state
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    if (tripId) {
-      setActiveTripId(tripId);
-    }
+    if (tripId) setActiveTripId(tripId);
   }, [tripId]);
 
-  // Initialize WebSocket connection
-  useWebSocket();
-
-  // Listen for real-time agent updates and completion
-  useEffect(() => {
-    const handleAgentUpdate = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      const data = customEvent.detail;
-      setAgentStatuses((prev) => {
-        const existing = prev.findIndex((a) => a.name === data.agent);
-        if (existing >= 0) {
-          const updated = [...prev];
-          updated[existing] = {
-            name: data.agent,
-            status: data.status,
-            message: data.message,
-          };
-          return updated;
-        }
-        return [...prev, { name: data.agent, status: data.status, message: data.message }];
-      });
-
-      // Add agent message to chat if present
-      if (data.message && data.status === "running") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "agent",
-            content: data.message,
-            agent: data.agent,
-            timestamp: new Date(),
-          },
-        ]);
-      }
-    };
-
-    const handleApproval = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      setPendingApproval(customEvent.detail.approval);
-    };
-
-    const handleTripCompleted = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      const data = customEvent.detail;
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: `Itinerary generated successfully! Redirecting you to your final plan details...`,
-          timestamp: new Date(),
-        },
-      ]);
-      setTimeout(() => {
-        router.push(`/dashboard/trips/${data.trip_id || activeTripId}`);
-      }, 2000);
-    };
-
-    window.addEventListener("agent-update", handleAgentUpdate);
-    window.addEventListener("approval-request", handleApproval);
-    window.addEventListener("trip-completed", handleTripCompleted);
-
-    return () => {
-      window.removeEventListener("agent-update", handleAgentUpdate);
-      window.removeEventListener("approval-request", handleApproval);
-      window.removeEventListener("trip-completed", handleTripCompleted);
-    };
-  }, [activeTripId, router]);
-
-  // Auto-scroll to bottom when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, pendingApproval]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  // Poll trip status while planning
+  const pollTripStatus = useCallback(async (tid: string) => {
+    try {
+      const status = await api.get<any>(`/api/v1/trips/${tid}/status`);
+      
+      // Update agent statuses based on current_agent
+      if (status.current_agent) {
+        setAgents(prev => prev.map(a => {
+          const idx = AGENT_DEFS.findIndex(d => d.name === a.name);
+          const currentIdx = AGENT_DEFS.findIndex(d => d.name === status.current_agent);
+          if (idx < currentIdx) return { ...a, status: "completed" as const };
+          if (idx === currentIdx) return { ...a, status: "running" as const };
+          return a;
+        }));
+      }
 
-    const userMessage: Message = {
+      if (status.status === "awaiting_approval") {
+        if (pollingRef.current) clearInterval(pollingRef.current);
+        setIsLoading(false);
+        
+        // Use approval_id from status response if available
+        if (status.approval_id) {
+          try {
+            const approval = await api.get<any>(`/api/v1/approvals/${status.approval_id}`);
+            setPendingApproval(approval);
+            addMessage("assistant", `⚠️ **Approval needed!** ${approval.description || "The agents need your confirmation before proceeding."}`);
+          } catch {
+            // fallback: list all pending approvals
+            const approvals = await api.get<any>("/api/v1/approvals").catch(() => []);
+            const pending = Array.isArray(approvals) ? approvals.filter((a: any) => a.status === "pending") : [];
+            if (pending.length > 0) {
+              setPendingApproval(pending[0]);
+              addMessage("assistant", `⚠️ **Approval needed!** ${pending[0].description || "Please review and approve to continue."}`);
+            }
+          }
+        }
+      } else if (status.is_complete) {
+        if (pollingRef.current) clearInterval(pollingRef.current);
+        if (status.status === "completed") {
+          setAgents(prev => prev.map(a => ({ ...a, status: "completed" as const })));
+          setPlanningDone(true);
+          addMessage("assistant", `🎉 **Your trip plan is ready!** I've crafted a detailed day-by-day itinerary tailored to your preferences and budget. Click "View Full Itinerary" to explore your complete trip plan!`, false);
+        } else if (status.status === "failed") {
+          setAgents(prev => prev.map(a => ({ ...a, status: a.status === "running" ? "failed" as const : a.status })));
+          addMessage("assistant", "❌ Planning encountered an issue. Please try again with more details about your destination and budget.", true);
+        } else if (status.status === "cancelled") {
+          addMessage("system", "Trip planning was cancelled.");
+        }
+        setIsLoading(false);
+      }
+    } catch (err) {
+      // Silently ignore polling errors (network hiccup)
+    }
+  }, []);
+
+  const addMessage = (role: Message["role"], content: string, isError = false, agent?: string) => {
+    setMessages(prev => [...prev, {
       id: crypto.randomUUID(),
-      role: "user",
-      content: input,
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, userMessage]);
+      role, content, timestamp: new Date(), isError, agent
+    }]);
+  };
+
+  const resetAgents = () => {
+    setAgents(AGENT_DEFS.map(a => ({ ...a, status: "pending" })));
+  };
+
+  const handleSend = async (text?: string) => {
+    const query = (text || input).trim();
+    if (!query || isLoading) return;
+
     setInput("");
     setIsLoading(true);
-    setAgentStatuses([]); // Reset status bar for new planning runs
+    setShowAgents(true);
+    setPlanningDone(false);
+    setPendingApproval(null);
+    resetAgents();
 
-    try {
-      let currentTripId = activeTripId;
+    addMessage("user", query);
 
-      // 1. Create a trip skeleton if we don't have one active yet
-      if (!currentTripId) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "system",
-            content: "Initializing trip planning session...",
-            timestamp: new Date(),
-          },
-        ]);
-
+    // Step 1: Create a trip record (with minimal placeholder data)
+    let currentTripId = activeTripId;
+    if (!currentTripId) {
+      addMessage("system", "🚀 Initializing trip planning session...");
+      try {
         const createRes = await api.post<any>("/api/v1/trips", {
           origin: "Delhi",
-          destination: "Manali", // Placeholders to satisfy backend validation
+          destination: "TBD",
           days: 5,
           budget_inr: 15000,
           travelers: 1,
@@ -148,140 +161,319 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
             language: "en"
           }
         });
-
-        if (createRes && createRes.id) {
-          currentTripId = createRes.id;
-          setActiveTripId(createRes.id);
-        } else {
-          throw new Error("Failed to initialize trip record on the server.");
-        }
+        if (!createRes?.id) throw new Error("No trip ID returned");
+        currentTripId = createRes.id;
+        setActiveTripId(createRes.id);
+      } catch (err: any) {
+        addMessage("assistant", `Failed to start planning: ${err.message}. Please make sure you are logged in.`, true);
+        setIsLoading(false);
+        return;
       }
+    }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: "AI travel agents are analyzing your request. Please wait...",
-          timestamp: new Date(),
-        },
-      ]);
+    // Mark orchestrator as running
+    setAgents(prev => prev.map((a, i) => i === 0 ? { ...a, status: "running" } : a));
+    addMessage("system", "🤖 AI agents are analyzing your request...");
 
-      // 2. Call the plan endpoint with raw natural language input
+    // Step 2: Kick off the LangGraph planning pipeline (async, returns immediately)
+    try {
       const planRes = await api.post<any>(`/api/v1/trips/${currentTripId}/plan`, {
-        raw_input: userMessage.content,
+        raw_input: query,
       });
 
-      if (planRes.status === "awaiting_approval") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "system",
-            content: `Planning paused: approval required for booking. Check details above.`,
-            timestamp: new Date(),
-          },
-        ]);
-      }
+      // The /plan endpoint always returns 202 immediately with status: "planning"
+      // Start polling for status updates
+      addMessage("system", "🤖 AI agents are now working on your trip. This may take 30-90 seconds...");
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      pollingRef.current = setInterval(() => pollTripStatus(currentTripId!), 3000);
 
-    } catch (error: any) {
-      console.error(error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: `Failed to plan trip: ${error.message || "Please try again."}`,
-          timestamp: new Date(),
-        },
-      ]);
-    } finally {
+    } catch (err: any) {
+      addMessage("assistant", `⚠️ ${err.message || "Failed to start planning. Please check you are logged in and try again."}`, true);
       setIsLoading(false);
+      setShowAgents(false);
     }
   };
 
-  const handleVoiceTranscript = (transcript: string) => {
-    setInput(transcript);
-    // Ideally we would trigger handleSend here, but wrapping it in a setTimeout allows state to settle.
-    setTimeout(() => {
-      const enterEvent = new KeyboardEvent('keydown', { key: 'Enter' });
-      document.getElementById('chat-input')?.dispatchEvent(enterEvent);
-    }, 100);
-  };
-
-  const handleApprovalResponse = async (approved: boolean) => {
+  const handleApproval = async (approved: boolean) => {
     if (!pendingApproval) return;
     const endpoint = approved ? "approve" : "reject";
     try {
-      await api.post(`/api/v1/approvals/${pendingApproval.approval_id}/${endpoint}`, {
+      await api.post(`/api/v1/approvals/${pendingApproval.id || pendingApproval.approval_id}/${endpoint}`, {
         modifications: null
       });
       setPendingApproval(null);
-    } catch (error) {
-      console.error("Failed to submit approval", error);
+      if (approved) {
+        addMessage("system", "✅ Approval confirmed! Finalizing your itinerary...");
+        setIsLoading(true);
+        // Poll for completion
+        if (activeTripId) {
+          pollingRef.current = setInterval(() => pollTripStatus(activeTripId), 2500);
+        }
+      } else {
+        addMessage("assistant", "Understood, I've cancelled that option. Would you like me to find alternative options within a lower budget?");
+      }
+    } catch (err: any) {
+      addMessage("assistant", `Failed to submit decision: ${err.message}`, true);
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const startNew = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    setActiveTripId(undefined);
+    setMessages([]);
+    setAgents(AGENT_DEFS.map(a => ({ ...a, status: "pending" })));
+    setShowAgents(false);
+    setPlanningDone(false);
+    setPendingApproval(null);
+    setIsLoading(false);
+  };
+
+  const formatContent = (text: string) => {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br/>');
+  };
+
   return (
-    <div className="flex flex-col h-full bg-background rounded-xl border overflow-hidden shadow-sm">
-      {/* Agent Progress */}
-      <AgentProgress agents={agentStatuses} />
-
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 bg-muted/20">
-        <div className="max-w-3xl mx-auto flex flex-col justify-end min-h-full">
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground opacity-50 my-10">
-              <Send className="w-12 h-12 mb-4" />
-              <p>Start planning your trip.</p>
-              <p className="text-sm">"Plan a 5-day trip to Manali from Delhi under ₹15,000"</p>
+    <div className="flex flex-col h-full min-h-[600px] glass rounded-2xl border border-white/10 overflow-hidden">
+      
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-gradient-to-r from-primary/10 to-indigo-500/5">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg glow-primary-sm">
+              <Sparkles className="h-5 w-5 text-white" />
             </div>
-          )}
-          
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))}
-
-          {/* Approval Card */}
-          {pendingApproval && (
-            <ApprovalCard
-              approval={pendingApproval}
-              onApprove={() => handleApprovalResponse(true)}
-              onReject={() => handleApprovalResponse(false)}
-            />
-          )}
-          
-          <div ref={messagesEndRef} className="h-4" />
+            {isLoading && (
+              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-background animate-pulse" />
+            )}
+          </div>
+          <div>
+            <p className="font-semibold text-sm">PariKrama AI Travel Planner</p>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className={`w-1.5 h-1.5 rounded-full ${isLoading ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
+              {isLoading ? "Agents working..." : "Ready to plan your trip"}
+            </div>
+          </div>
         </div>
+        {(messages.length > 0 || showAgents) && (
+          <button
+            onClick={startNew}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> New Trip
+          </button>
+        )}
       </div>
 
-      {/* Input Area */}
-      <div className="p-4 bg-background border-t">
-        <div className="max-w-3xl mx-auto flex items-center gap-2">
-          <VoiceButton onTranscript={handleVoiceTranscript} />
-          <Input
-            id="chat-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSend()
-              }
-            }}
-            placeholder="Type your request here..."
-            className="flex-1 rounded-full px-4 focus-visible:ring-1"
-            disabled={isLoading}
-            autoComplete="off"
-          />
-          <Button 
-            onClick={handleSend} 
-            disabled={isLoading || !input.trim()} 
-            size="icon" 
-            className="rounded-full shrink-0 transition-transform active:scale-95"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
+      {/* ── Agent Progress Bar ── */}
+      {showAgents && (
+        <div className="px-5 py-3 border-b border-white/5 bg-black/20">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            {agents.map((agent, idx) => {
+              const Icon = agent.icon;
+              return (
+                <div key={agent.name} className="flex items-center gap-1 flex-shrink-0">
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    agent.status === "completed" ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" :
+                    agent.status === "running" ? "bg-primary/15 text-primary border border-primary/20 animate-pulse" :
+                    agent.status === "failed" ? "bg-rose-500/15 text-rose-400 border border-rose-500/20" :
+                    "bg-white/5 text-muted-foreground border border-white/5"
+                  }`}>
+                    {agent.status === "running" ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : agent.status === "completed" ? (
+                      <CheckCircle className="h-3 w-3" />
+                    ) : agent.status === "failed" ? (
+                      <AlertCircle className="h-3 w-3" />
+                    ) : (
+                      <Icon className="h-3 w-3" />
+                    )}
+                    <span className="hidden sm:block">{agent.label}</span>
+                  </div>
+                  {idx < agents.length - 1 && (
+                    <ChevronRight className="h-3 w-3 text-muted-foreground/30 flex-shrink-0" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
+      )}
+
+      {/* ── Messages ── */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center py-12">
+            <div className="w-20 h-20 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-6 animate-float">
+              <Plane className="h-10 w-10 text-primary/60" />
+            </div>
+            <h2 className="text-xl font-bold mb-2">Where would you like to go?</h2>
+            <p className="text-muted-foreground text-sm max-w-sm mb-8 leading-relaxed">
+              Describe your dream trip in plain language — our AI agents will craft a complete, personalized itinerary for you.
+            </p>
+            <div className="grid grid-cols-1 gap-2 w-full max-w-md">
+              {WELCOME_SUGGESTIONS.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => handleSend(suggestion)}
+                  className="text-left px-4 py-3 rounded-xl glass border border-white/5 hover:border-primary/30 hover:bg-primary/5 transition-all text-sm text-muted-foreground hover:text-foreground group"
+                >
+                  <span className="text-primary/60 group-hover:text-primary mr-2">→</span>
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex gap-3 msg-enter ${msg.role === "user" ? "flex-row-reverse" : ""}`}
+          >
+            {/* Avatar */}
+            {(msg.role === "assistant" || msg.role === "agent") && (
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+                <Bot className="h-4 w-4 text-white" />
+              </div>
+            )}
+            {msg.role === "user" && (
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+                <User className="h-4 w-4 text-white" />
+              </div>
+            )}
+            {msg.role === "system" && (
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                <Compass className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+            )}
+
+            {/* Bubble */}
+            <div className={`max-w-[80%] ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
+              <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                msg.role === "user"
+                  ? "bg-primary text-white rounded-tr-sm"
+                  : msg.role === "system"
+                  ? "bg-white/5 border border-white/5 text-muted-foreground rounded-tl-sm text-xs py-2"
+                  : msg.isError
+                  ? "bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-tl-sm"
+                  : "glass border border-white/5 rounded-tl-sm"
+              }`}>
+                <div
+                  dangerouslySetInnerHTML={{ __html: formatContent(msg.content) }}
+                  className="whitespace-pre-wrap"
+                />
+              </div>
+              <span className="text-[10px] text-muted-foreground px-1">
+                {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+          </div>
+        ))}
+
+        {/* Loading Indicator */}
+        {isLoading && messages.length > 0 && (
+          <div className="flex gap-3">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+              <Bot className="h-4 w-4 text-white" />
+            </div>
+            <div className="glass border border-white/5 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1.5 items-center">
+              <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
+              <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
+              <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
+            </div>
+          </div>
+        )}
+
+        {/* Approval Card */}
+        {pendingApproval && (
+          <div className="glass border border-amber-500/20 rounded-2xl p-5 space-y-4 msg-enter">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-amber-500/10">
+                <AlertCircle className="h-5 w-5 text-amber-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-amber-300">{pendingApproval.title || "Approval Required"}</p>
+                <p className="text-sm text-muted-foreground mt-1">{pendingApproval.description}</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleApproval(true)}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/25 transition-all"
+              >
+                ✓ Approve & Continue
+              </button>
+              <button
+                onClick={() => handleApproval(false)}
+                className="flex-1 py-2.5 rounded-xl glass border border-white/10 text-muted-foreground text-sm font-semibold hover:border-rose-500/30 hover:text-rose-400 transition-all"
+              >
+                ✗ Find Alternative
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* View Itinerary CTA */}
+        {planningDone && activeTripId && (
+          <div className="flex justify-center msg-enter">
+            <button
+              onClick={() => router.push(`/dashboard/trips/${activeTripId}`)}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 glow-primary-sm hover:glow-primary transition-all hover:scale-105"
+            >
+              <Map className="h-4 w-4" /> View Full Itinerary
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* ── Input Area ── */}
+      <div className="p-4 border-t border-white/5 bg-black/10">
+        <div className="flex items-end gap-2">
+          <div className="flex-1 relative">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder='Describe your trip... e.g. "5 days in Manali from Delhi under ₹15,000"'
+              disabled={isLoading}
+              rows={1}
+              className="w-full px-4 py-3 pr-12 rounded-xl bg-secondary/50 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all resize-none min-h-[46px] max-h-32 disabled:opacity-50"
+              style={{ height: "auto" }}
+              onInput={(e) => {
+                const el = e.target as HTMLTextAreaElement;
+                el.style.height = "auto";
+                el.style.height = Math.min(el.scrollHeight, 128) + "px";
+              }}
+            />
+          </div>
+          <button
+            onClick={() => handleSend()}
+            disabled={isLoading || !input.trim()}
+            className="flex-shrink-0 p-3 rounded-xl bg-primary text-white hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:scale-105 glow-primary-sm"
+          >
+            {isLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
+          </button>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-2 text-center">
+          Press <kbd className="px-1 py-0.5 rounded bg-white/5 text-[10px] font-mono">Enter</kbd> to send · <kbd className="px-1 py-0.5 rounded bg-white/5 text-[10px] font-mono">Shift+Enter</kbd> for new line
+        </p>
       </div>
     </div>
   );

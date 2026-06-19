@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import warnings
 
 import structlog
 
@@ -32,12 +33,15 @@ class GeminiProvider:
         if not api_key:
             raise ValueError("GEMINI_API_KEY is required for GeminiProvider")
 
-        import google.generativeai as genai  # lazy import — heavy
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            import google.generativeai as genai  # lazy import — heavy
 
         genai.configure(api_key=api_key)
         self._model_name = model
         self._timeout = timeout_seconds
         self._client = genai.GenerativeModel(model)
+        self._genai = genai
         self.is_configured = True
 
     async def generate(
@@ -60,10 +64,8 @@ class GeminiProvider:
             asyncio.TimeoutError: If response takes longer than timeout_seconds.
             Exception: Propagated from the Gemini API on error.
         """
-        import google.generativeai as genai
-
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
-        config = genai.GenerationConfig(temperature=temperature)
+        config = self._genai.GenerationConfig(temperature=temperature)
 
         start = time.monotonic()
         try:

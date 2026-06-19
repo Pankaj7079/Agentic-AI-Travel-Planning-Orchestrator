@@ -6,6 +6,30 @@ the app fails fast at startup instead of crashing randomly later.
 """
 
 import json
+from pathlib import Path
+
+
+def _find_env_file() -> list[str]:
+    """Search for .env in all parent directories up to the filesystem root."""
+    candidates = []
+    # Walk up from this file's location to find all .env files
+    current = Path(__file__).resolve().parent
+    while True:
+        env_path = current / ".env"
+        if env_path.exists():
+            candidates.append(str(env_path))
+        parent = current.parent
+        if parent == current:
+            # Reached filesystem root
+            break
+        current = parent
+    # Also check cwd as a final fallback
+    cwd_env = Path(".env").resolve()
+    if cwd_env.exists() and str(cwd_env) not in candidates:
+        candidates.append(str(cwd_env))
+    # Return in order: closest .env first (most specific wins in pydantic-settings)
+    return candidates or [".env"]
+
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,7 +39,7 @@ class Settings(BaseSettings):
     """Application settings loaded from .env file."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_find_env_file(),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",

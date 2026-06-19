@@ -124,8 +124,8 @@ async def orchestrator_node(
     # Validation
     _validate_trip_request(trip_request)
 
-    messages: list[AgentMessage] = list(state.get("messages", []))
-    messages.append(
+    # Return only new messages — Annotated[list, operator.add] concatenates.
+    new_messages: list[AgentMessage] = [
         AgentMessage(
             agent="orchestrator",
             content=(
@@ -134,7 +134,7 @@ async def orchestrator_node(
                 f"{trip_request['travelers']} traveler(s)"
             ),
         )
-    )
+    ]
 
     log.info(
         "orchestrator_completed",
@@ -157,8 +157,8 @@ async def orchestrator_node(
         "request": trip_request,
         "current_agent": "orchestrator",
         "status": "planning",
-        "messages": messages,
-        "errors": list(state.get("errors", [])),
+        "messages": new_messages,  # only new — LangGraph adds to existing
+        "errors": [],              # no new errors from orchestrator at this point
     }
 
 

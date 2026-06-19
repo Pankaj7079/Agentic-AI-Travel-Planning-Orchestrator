@@ -57,7 +57,7 @@ async def booking_node(
     destination = request.get("destination", "")
     days = request.get("days", 3)
     total_budget = float(request.get("budget_inr", 10000))
-    errors: list[str] = list(state.get("errors", []))
+    errors: list[str] = []  # only NEW errors from this node
 
     # Broadcast to WebSocket
     from parikrama.api.websocket.manager import ws_manager
@@ -111,7 +111,8 @@ async def booking_node(
     )
 
     return {
-        **state,
+        # ONLY return keys this node writes — do NOT spread **state
+        # Same fix as research_node: parallel nodes must not write to shared keys.
         "hotel_options": hotels_result,
         "transport_options": transport_result,
         "requires_approval": requires_approval,

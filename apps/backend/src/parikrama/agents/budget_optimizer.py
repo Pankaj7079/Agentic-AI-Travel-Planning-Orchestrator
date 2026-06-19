@@ -73,7 +73,7 @@ async def budget_optimizer_node(
     request = state.get("request", {})
     total_budget = float(request.get("budget_inr", 10000))
     days = int(request.get("days", 3))
-    errors: list[str] = list(state.get("errors", []))
+    errors: list[str] = []  # only NEW errors from this node
 
     # Broadcast to WebSocket
     from parikrama.api.websocket.manager import ws_manager
@@ -92,22 +92,26 @@ async def budget_optimizer_node(
     breakdown = await _generate_breakdown(context, total_budget, llm_router, errors)
     is_within = breakdown.get("is_within_budget", True) if breakdown else True
 
-    messages: list[AgentMessage] = list(state.get("messages", []))
+    # Collect only NEW messages/errors from this node.
+    # messages and errors are Annotated[list, operator.add] so LangGraph
+    # concatenates the returned list onto the existing one. Return only
+    # the items THIS node added, not the full accumulated list.
+    new_messages: list[AgentMessage] = []
     retry_num = state.get("_budget_retries", 0)
     if retry_num > 0:
-        messages.append(
+        new_messages.append(
             AgentMessage(
                 agent="budget_optimizer", content=f"Budget re-optimization attempt #{retry_num}"
             )
         )
 
     total_est = breakdown.get("total_inr", 0) if breakdown else 0
-    messages.append(
+    new_messages.append(
         AgentMessage(
             agent="budget_optimizer",
             content=(
                 f"Budget: ₹{total_est:,.0f} / ₹{total_budget:,.0f} — "
-                f"{'✓ within budget' if is_within else '⚠️ over budget'}"
+                f"{'\u2713 within budget' if is_within else '⚠️ over budget'}"
             ),
         )
     )
@@ -133,8 +137,9 @@ async def budget_optimizer_node(
         "budget_breakdown": BudgetBreakdown(**breakdown) if breakdown else None,
         "is_within_budget": is_within,
         "current_agent": "budget_optimizer",
-        "messages": messages,
-        "errors": errors,
+        # Return only new items — LangGraph concatenates via operator.add
+        "messages": new_messages,
+        "errors": errors,  # new errors captured by _generate_breakdown
     }
 
 

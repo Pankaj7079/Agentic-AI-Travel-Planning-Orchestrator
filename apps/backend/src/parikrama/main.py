@@ -7,8 +7,14 @@ from contextlib import asynccontextmanager
 
 import sentry_sdk
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
 
 from parikrama.api.router import api_router
 from parikrama.config import settings
@@ -63,6 +69,18 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(api_router, prefix="/api")
 
+    @app.get("/health")
+    def health_check():
+        """Simple health check endpoint."""
+        return {"status": "ok", "version": "0.1.0", "service": "parikrama"}
+
+    @app.get("/metrics")
+    def metrics():
+        """Prometheus metrics endpoint."""
+        if PROMETHEUS_AVAILABLE:
+            return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+        return Response(content="# prometheus_client not available\n", media_type="text/plain")
+
     # Phase 5 — WebSocket for real-time agent updates
     from parikrama.api.websocket.routes import router as ws_router
 
@@ -72,3 +90,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

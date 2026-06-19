@@ -2,16 +2,22 @@
 Trip Planning API — endpoints for the Phase 4 multi-agent pipeline.
 
 Routes:
-    POST /api/v1/trips/{id}/plan    — Start the full multi-agent planning pipeline
+    POST /api/v1/trips/{id}/plan    — Start the full multi-agent planning pipeline (async, returns immediately)
     GET  /api/v1/trips/{id}/agents  — Get per-agent run history for a trip
+
+Design:
+    The /plan endpoint dispatches planning as a background asyncio task and returns
+    202 Accepted immediately. The client polls /trips/{id}/status or connects via
+    WebSocket at /ws/{user_id} to receive real-time agent progress updates.
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated, Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: TC002
 
@@ -30,11 +36,19 @@ class PlanTripRequest(BaseModel):
     """Request body to start the multi-agent trip planning pipeline."""
 
     raw_input: str = Field(
-        min_length=10,
-        max_length=1000,
+        min_length=5,
+        max_length=2000,
         description="Natural language trip request (English/Hindi/Hinglish)",
         examples=["Plan a 5-day trip from Delhi to Manali with a budget of ₹15,000"],
     )
+
+
+class PlanTripResponse(BaseModel):
+    """Immediate response from the trip planning pipeline dispatch."""
+
+    trip_id: str
+    status: str
+    message: str
 
 
 class AgentRunResponse(BaseModel):
@@ -53,104 +67,95 @@ class AgentRunResponse(BaseModel):
     created_at: str
 
 
-class PlanTripResponse(BaseModel):
-    """Response from the trip planning pipeline."""
-
-    trip_id: str
-    status: str
-    duration_ms: int
-    summary: str
-    itinerary_days: int
-    has_budget_breakdown: bool
-    has_hotel_options: bool
-    has_transport_options: bool
-    errors: list[str]
-    result: dict[str, Any]
-
-
-# ── Dependency ─────────────────────────────────────────────────────────────────
-
-
-def _get_llm_router():  # type: ignore[return]
-    """FastAPI dependency — returns the singleton LLMRouter. Raises 503 if unavailable."""
-    from parikrama.config import settings
-    from parikrama.llm.router import LLMRouter, LLMUnavailableError
-
-    try:
-        return LLMRouter.from_settings(settings)
-    except LLMUnavailableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-
-
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 
 @router.post(
     "/{trip_id}/plan",
     response_model=PlanTripResponse,
-    summary="Start multi-agent trip planning pipeline",
+    status_code=202,
+    summary="Start multi-agent trip planning pipeline (async)",
 )
 async def plan_trip(
     trip_id: str,
     request: PlanTripRequest,
+    background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> PlanTripResponse:
     """
     Trigger the full multi-agent planning pipeline for an existing trip.
 
-    **Pipeline:**
+    **Returns immediately (202 Accepted)** — planning runs as a background task.
+
+    Poll `GET /api/v1/trips/{id}/status` to track progress, or connect to
+    `WebSocket /ws/{user_id}?token=<access_token>` for real-time agent updates.
+
+    **Pipeline (runs in background):**
     1. **Orchestrator** — parses your natural language request
     2. **Research** (parallel) — gathers weather, places, travel knowledge
     3. **Booking** (parallel) — finds hotels and transport options
     4. **Budget Optimizer** — calculates cost breakdown, suggests savings
     5. **Itinerary Finalizer** — generates day-by-day plan
-
-    The trip must exist (create via `POST /api/v1/trips/`) and belong to the authenticated user.
-
-    Example: `"Plan a 5-day trip from Delhi to Manali, budget ₹15,000, I love adventure"`
     """
-    from parikrama.llm.router import LLMUnavailableError
-    from parikrama.services.trip_planning_service import TripPlanningService
+    import uuid
+    from sqlalchemy import select
+    from parikrama.models.trip import Trip
 
-    llm_router = _get_llm_router()
-    service = TripPlanningService(db=db, llm_router=llm_router)
-
+    # Verify trip exists and belongs to user before dispatching
     try:
-        result = await service.run_planning(
-            trip_id=trip_id,
-            user_id=user_id,
-            raw_input=request.raw_input,
+        result = await db.execute(
+            select(Trip).where(
+                Trip.id == uuid.UUID(trip_id),
+                Trip.user_id == uuid.UUID(user_id),
+            )
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except LLMUnavailableError as exc:
+        trip = result.scalar_one_or_none()
+    except Exception:
+        trip = None
+
+    if not trip:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
-        ) from exc
-    except RuntimeError as exc:
-        logger.error("trip_planning_api_error", trip_id=trip_id, error=str(exc))
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Trip {trip_id} not found or access denied",
+        )
+
+    if trip.status in ("completed", "failed", "cancelled"):
+        # Allow re-planning by resetting status
+        trip.status = "pending"
+        await db.flush()
+
+    # Check LLM is configured before dispatching
+    try:
+        from parikrama.config import settings
+        from parikrama.llm.router import LLMRouter, LLMUnavailableError
+        LLMRouter.from_settings(settings)
+    except Exception as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Trip planning pipeline failed. Please try again.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"LLM provider not configured: {exc}",
         ) from exc
 
-    trip_result = result.get("result", {})
+    # Dispatch the background planning task
+    from parikrama.services.async_planner import run_planning_background
+    background_tasks.add_task(
+        run_planning_background,
+        trip_id=trip_id,
+        user_id=user_id,
+        raw_input=request.raw_input,
+    )
+
+    logger.info(
+        "trip_planning_dispatched",
+        trip_id=trip_id,
+        user_id=user_id,
+        raw_input=request.raw_input[:80],
+    )
 
     return PlanTripResponse(
-        trip_id=result["trip_id"],
-        status=result["status"],
-        duration_ms=result["duration_ms"],
-        summary=trip_result.get("summary", ""),
-        itinerary_days=len(trip_result.get("itinerary", [])),
-        has_budget_breakdown=trip_result.get("budget_breakdown") is not None,
-        has_hotel_options=len(trip_result.get("hotel_options", [])) > 0,
-        has_transport_options=len(trip_result.get("transport_options", [])) > 0,
-        errors=result.get("errors", []),
-        result=trip_result,
+        trip_id=trip_id,
+        status="planning",
+        message="Planning started. Poll /trips/{id}/status or connect to WebSocket for live updates.",
     )
 
 
@@ -171,26 +176,44 @@ async def get_agent_runs(
     budget_optimizer, itinerary_finalizer) with timing and status.
     Useful for debugging slow or failed pipelines.
     """
-    from parikrama.llm.router import LLMRouter
-    from parikrama.services.trip_planning_service import TripPlanningService
+    import uuid
+    from sqlalchemy import select
+    from parikrama.models.trip import AgentRun, Trip
 
-    # llm_router not needed for this read-only operation
-    try:
-        from parikrama.config import settings
+    # Verify trip belongs to user
+    result = await db.execute(
+        select(Trip).where(
+            Trip.id == uuid.UUID(trip_id),
+            Trip.user_id == uuid.UUID(user_id),
+        )
+    )
+    trip = result.scalar_one_or_none()
+    if not trip:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Trip {trip_id} not found or access denied",
+        )
 
-        llm_router = LLMRouter.from_settings(settings)
-    except Exception:
-        # For agent history reads, we don't need a working LLM router
-        llm_router = None  # type: ignore[assignment]
+    runs_result = await db.execute(
+        select(AgentRun)
+        .where(AgentRun.trip_id == uuid.UUID(trip_id))
+        .order_by(AgentRun.created_at)
+    )
+    runs = runs_result.scalars().all()
 
-    try:
-
-        class _NoOpRouter:
-            pass
-
-        service = TripPlanningService(db=db, llm_router=llm_router or _NoOpRouter())  # type: ignore[arg-type]
-        runs = await service.get_agent_runs(trip_id=trip_id, user_id=user_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    return [AgentRunResponse(**run) for run in runs]
+    return [
+        AgentRunResponse(
+            id=str(run.id),
+            agent_name=run.agent_name,
+            status=run.status,
+            duration_ms=run.duration_ms,
+            input_summary=run.input_summary,
+            output_summary=run.output_summary,
+            tokens_used=run.tokens_used,
+            error_message=run.error_message,
+            started_at=run.started_at.isoformat() if run.started_at else None,
+            completed_at=run.completed_at.isoformat() if run.completed_at else None,
+            created_at=run.created_at.isoformat(),
+        )
+        for run in runs
+    ]

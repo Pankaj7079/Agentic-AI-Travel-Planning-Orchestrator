@@ -286,12 +286,9 @@ class ApprovalService:
     async def _resume_pipeline(self, trip_id: str, approval_response: dict[str, Any]) -> None:
         """
         Re-invoke the LangGraph trip planning pipeline with approval context.
-
-        The graph checks approval_response in state at the beginning of the
-        budget/booking nodes and skips re-running completed steps.
+        Dispatches as a background asyncio task so approve() returns quickly.
         """
-        from parikrama.agents.trip_graph import build_trip_planning_graph
-        from parikrama.llm.router import LLMRouter
+        from parikrama.services.async_planner import run_planning_background
 
         result = await self.db.execute(select(Trip).where(Trip.id == uuid.UUID(trip_id)))
         trip = result.scalar_one_or_none()
@@ -299,40 +296,23 @@ class ApprovalService:
             logger.error("resume_pipeline_trip_not_found", trip_id=trip_id)
             return
 
-        try:
-            llm_router = LLMRouter.from_settings()
-            graph = build_trip_planning_graph(llm_router, self.db)
+        raw_input = (trip.request or {}).get("raw_input", "")
+        user_id = str(trip.user_id)
 
-            # Inject approval_response into last known state
-            prior_result = trip.result or {}
-            resume_state = {
-                "trip_id": trip_id,
-                "user_id": str(trip.user_id),
-                "raw_input": (trip.request or {}).get("raw_input", ""),
-                "request": prior_result.get("request", trip.request or {}),
-                "weather": prior_result.get("weather"),
-                "destination_info": prior_result.get("destination_info", ""),
-                "reviews_summary": prior_result.get("reviews_summary", ""),
-                "places_of_interest": prior_result.get("places_of_interest", []),
-                "hotel_options": prior_result.get("hotel_options", []),
-                "transport_options": prior_result.get("transport_options", []),
-                "requires_approval": False,  # cleared — user has approved
-                "budget_breakdown": prior_result.get("budget_breakdown"),
-                "is_within_budget": True,
-                "itinerary": prior_result.get("itinerary", []),
-                "summary": prior_result.get("summary", ""),
-                "current_agent": "budget_optimizer",  # resume from budget step
-                "messages": [],
-                "errors": [],
-                "status": "planning",
-                "approval_response": approval_response,
-                "_budget_retries": 0,
-            }
+        # Update trip status back to planning
+        trip.status = "planning"
+        await self.db.flush()
 
-            await graph.ainvoke(resume_state)
-            logger.info("pipeline_resumed", trip_id=trip_id)
-        except Exception as exc:
-            logger.error("pipeline_resume_failed", trip_id=trip_id, error=str(exc))
+        # Dispatch background planning (it will resume from where it left off)
+        import asyncio
+        asyncio.create_task(
+            run_planning_background(
+                trip_id=trip_id,
+                user_id=user_id,
+                raw_input=raw_input,
+            )
+        )
+        logger.info("pipeline_resume_dispatched", trip_id=trip_id)
 
     @staticmethod
     def _serialize(approval: ApprovalRequest) -> dict[str, Any]:

@@ -10,7 +10,9 @@ authors = [
 ]
 
 # root has no direct deps — each app manages its own
-dependencies = []
+dependencies = [
+    "prometheus-client>=0.25.0",
+]
 
 [tool.uv]
 managed = true

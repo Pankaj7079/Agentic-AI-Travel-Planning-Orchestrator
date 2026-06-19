@@ -1,0 +1,10 @@
+{
+  "name": "parikrama-root",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix apps/frontend",
+    "build": "npm run build --prefix apps/frontend",
+    "start": "npm run start --prefix apps/frontend",
+    "install-frontend": "npm install --prefix apps/frontend"
+  }
+}
