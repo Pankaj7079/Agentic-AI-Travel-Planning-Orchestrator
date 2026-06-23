@@ -137,6 +137,9 @@ async def budget_optimizer_node(
         "budget_breakdown": BudgetBreakdown(**breakdown) if breakdown else None,
         "is_within_budget": is_within,
         "current_agent": "budget_optimizer",
+        # BUG-09 fix: increment _budget_retries so the conditional edge router can
+        # correctly count retries (edge routers are read-only, can't mutate state).
+        "_budget_retries": state.get("_budget_retries", 0) + (0 if is_within else 1),
         # Return only new items — LangGraph concatenates via operator.add
         "messages": new_messages,
         "errors": errors,  # new errors captured by _generate_breakdown

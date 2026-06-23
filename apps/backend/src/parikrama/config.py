@@ -81,11 +81,11 @@ class Settings(BaseSettings):
 
     # -- LLM --
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     GEMINI_TIMEOUT_SECONDS: int = 30
     GROQ_API_KEY: str = ""
-    GROQ_PRIMARY_MODEL: str = "llama-3.1-70b-versatile"
-    GROQ_SECONDARY_MODEL: str = "mixtral-8x7b-32768"
+    GROQ_PRIMARY_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_SECONDARY_MODEL: str = "llama3-8b-8192"
     GROQ_TIMEOUT_SECONDS: int = 15
     LLM_FALLBACK_LATENCY_THRESHOLD_MS: int = 10000
     LLM_FALLBACK_ERROR_THRESHOLD: int = 3
@@ -115,6 +115,11 @@ class Settings(BaseSettings):
     # -- Notifications --
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "noreply@parikrama.dev"
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASS: str = ""
+    SMTP_FROM_EMAIL: str = "noreply@parikrama.dev"
 
     # -- Monitoring --
     LANGCHAIN_TRACING_V2: bool = False

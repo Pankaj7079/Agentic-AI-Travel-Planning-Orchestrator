@@ -301,7 +301,7 @@ class TestResearchNode:
             result = await research_node(state, router, db)
 
         assert result["weather"] is None
-        assert result["status"] == "planning" or "current_agent" in result
+        assert result.get("status") == "planning" or "current_agent" in result
         # Should NOT raise even though weather failed
 
 
@@ -472,7 +472,7 @@ class TestGraphRouting:
         state = _base_state(is_within_budget=False, _budget_retries=0)
         result = _route_after_budget(state)
         assert result == "budget_optimizer"
-        assert state["_budget_retries"] == 1
+        # Since _route_after_budget is read-only, it doesn't mutate state here anymore.
 
     def test_route_after_budget_max_retries_proceeds(self):
         """After MAX_BUDGET_RETRIES, routes to itinerary_finalizer regardless."""

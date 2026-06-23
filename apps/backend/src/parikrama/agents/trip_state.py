@@ -85,6 +85,14 @@ class AgentMessage(TypedDict):
     content: str
 
 
+def update_current_agent(current: str, new_val: str) -> str:
+    """
+    Reducer function for current_agent to handle concurrent updates from parallel nodes.
+    Returns the new value if provided, otherwise falls back to the current value.
+    """
+    return new_val or current
+
+
 class TripPlanningState(TypedDict, total=False):
     """
     Shared state dict flowing through the entire trip planning LangGraph.
@@ -130,7 +138,7 @@ class TripPlanningState(TypedDict, total=False):
     summary: str               # One-paragraph trip summary
 
     # ── Pipeline control ─────────────────────────────────────────────────────
-    current_agent: str    # Name of the currently running agent
+    current_agent: Annotated[str, update_current_agent]  # Name of the currently running agent
     status: str           # "planning" | "completed" | "failed" | "awaiting_approval"
     approval_response: str | None  # Human approval decision (Phase 5)
 

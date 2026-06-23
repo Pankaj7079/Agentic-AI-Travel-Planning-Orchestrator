@@ -340,16 +340,24 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                                   <Compass className="h-3.5 w-3.5 text-violet-400" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium">{act.activity || act.description}</p>
+                                  <p className="text-sm font-medium">{act.activity || act.name || act.description || act.title || "Activity"}</p>
                                   {act.location && (
                                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                                       <Map className="h-3 w-3" /> {act.location}
                                     </p>
                                   )}
+                                  {(act.time || act.duration_mins) && (
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                      {act.time && <span>{act.time}</span>}
+                                      {act.time && act.duration_mins && " · "}
+                                      {act.duration_mins && <span>{act.duration_mins} min</span>}
+                                    </p>
+                                  )}
+                                  {act.tips && <p className="text-xs text-primary/70 mt-1 italic">{act.tips}</p>}
                                 </div>
-                                {act.cost_inr > 0 && (
+                                {(act.cost_inr ?? 0) > 0 && (
                                   <span className="text-xs text-emerald-400 font-medium flex-shrink-0">
-                                    ₹{act.cost_inr.toLocaleString("en-IN")}
+                                    ₹{Number(act.cost_inr).toLocaleString("en-IN")}
                                   </span>
                                 )}
                               </div>
@@ -367,16 +375,19 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                                   <Utensils className="h-3.5 w-3.5 text-amber-400" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium">{meal.suggestion || meal.description}</p>
-                                  {meal.time && (
-                                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                                      <Clock className="h-3 w-3" /> {meal.time}
-                                    </p>
-                                  )}
+                                  <p className="text-sm font-medium">{meal.suggestion || meal.name || meal.description || meal.restaurant || "Meal"}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {meal.type && <span className="text-xs text-muted-foreground capitalize">{meal.type}</span>}
+                                    {meal.time && (
+                                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                        <Clock className="h-3 w-3" /> {meal.time}
+                                      </p>
+                                    )}
+                                  </div>
                                 </div>
-                                {meal.estimated_cost_inr > 0 && (
+                                {(meal.estimated_cost_inr ?? 0) > 0 && (
                                   <span className="text-xs text-amber-400 font-medium flex-shrink-0">
-                                    ₹{meal.estimated_cost_inr.toLocaleString("en-IN")}
+                                    ₹{Number(meal.estimated_cost_inr).toLocaleString("en-IN")}
                                   </span>
                                 )}
                               </div>

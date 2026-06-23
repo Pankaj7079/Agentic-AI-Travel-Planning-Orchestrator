@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
     from parikrama.llm.router import LLMRouter
 
-logger = structlog.get_logger(__name__)
+logger = structlog.get_logger("parikrama.agents.trip_graph")
 
 MAX_BUDGET_RETRIES = 2
 
@@ -46,6 +46,11 @@ def _route_after_budget(state: TripPlanningState) -> str:
     Conditional edge after budget_optimizer:
     - is_within_budget=True  → proceed to itinerary_finalizer
     - is_within_budget=False → retry budget optimization (max MAX_BUDGET_RETRIES times)
+
+    BUG-05 fix: Edge routers are READ-ONLY in LangGraph. State mutation
+    (state["_budget_retries"] = ...) is forbidden here. The counter is
+    now incremented inside budget_optimizer_node itself and returned
+    as part of the node's output dict.
     """
     if state.get("is_within_budget", True):
         return "itinerary_finalizer"
@@ -54,14 +59,14 @@ def _route_after_budget(state: TripPlanningState) -> str:
     if retries >= MAX_BUDGET_RETRIES:
         logger.warning(
             "budget_max_retries_reached",
+            layer="AGENT",
             trip_id=state.get("trip_id"),
             retries=retries,
+            action="proceeding_to_finalizer_anyway",
         )
         return "itinerary_finalizer"  # proceed with over-budget warning
 
-    # Increment retry counter in state (LangGraph state is immutable — returned as new dict)
-    state["_budget_retries"] = retries + 1  # type: ignore[literal-required]
-    logger.info("budget_retry", attempt=retries + 1, max=MAX_BUDGET_RETRIES)
+    logger.info("budget_retry", layer="AGENT", attempt=retries + 1, max=MAX_BUDGET_RETRIES)
     return "budget_optimizer"
 
 
@@ -129,6 +134,8 @@ def build_trip_planning_graph(
     compiled = graph.compile()
     logger.info(
         "trip_planning_graph_compiled",
+        layer="AGENT",
         nodes=["orchestrator", "research", "booking", "budget_optimizer", "itinerary_finalizer"],
+        flow="orchestrator -> [research || booking] -> budget_optimizer -> itinerary_finalizer -> END",
     )
     return compiled

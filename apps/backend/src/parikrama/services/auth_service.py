@@ -5,7 +5,7 @@ Handles both local (email+password) and Google OAuth flows.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import structlog
@@ -181,7 +181,7 @@ class AuthService:
             token_hash=refresh_token_hash,
             expires_at=str(
                 datetime.now(UTC)
-                + __import__("datetime").timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+                + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
             ),
         )
         self.db.add(token_record)

@@ -133,6 +133,9 @@ class AgentRunResponse(BaseModel):
     status: str
     tokens_used: int
     duration_ms: int | None
+    # BUG-06 fix: these were in the model but missing from schema
+    input_summary: str | None = None
+    output_summary: str | None = None
     error_message: str | None
     started_at: datetime | None
     completed_at: datetime | None
@@ -141,7 +144,7 @@ class AgentRunResponse(BaseModel):
 
 
 class TripStatusResponse(BaseModel):
-    """Live trip planning status — sent via WebSocket."""
+    """Live trip planning status — sent via WebSocket / polling."""
 
     trip_id: str
     status: str
@@ -149,3 +152,6 @@ class TripStatusResponse(BaseModel):
     progress_percent: int
     message: str
     is_complete: bool
+    # BUG-01 fix: these were returned by the service but missing from schema
+    approval_id: str | None = None
+    has_result: bool = False

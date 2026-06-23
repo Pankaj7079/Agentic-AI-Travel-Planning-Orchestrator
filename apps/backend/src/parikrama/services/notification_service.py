@@ -76,17 +76,28 @@ class NotificationService:
         if ws_sent > 0:
             channels_sent.append("websocket")
 
-        # ── Channel 2: Email via Resend ────────────────────────────────────
-        if user.email_notifications and settings.RESEND_API_KEY:
-            try:
-                await self._send_email(user.email, title, body, extra)
-                channels_sent.append("email")
-            except Exception as exc:
-                logger.error(
-                    "email_notification_failed",
-                    user_id=str(user.id),
-                    error=str(exc)[:200],
-                )
+        # ── Channel 2: Email via Resend or SMTP ──────────────────────────────
+        if user.email_notifications:
+            if settings.RESEND_API_KEY:
+                try:
+                    await self._send_email(user.email, title, body, extra)
+                    channels_sent.append("email")
+                except Exception as exc:
+                    logger.error(
+                        "email_notification_failed_resend",
+                        user_id=str(user.id),
+                        error=str(exc)[:200],
+                    )
+            elif settings.SMTP_HOST:
+                try:
+                    await self._send_email_smtp(user.email, title, body, extra)
+                    channels_sent.append("email")
+                except Exception as exc:
+                    logger.error(
+                        "email_notification_failed_smtp",
+                        user_id=str(user.id),
+                        error=str(exc)[:200],
+                    )
 
         # ── Channel 3: Push via FCM (stub until Phase 7 frontend) ─────────
         if user.push_notifications and user.fcm_token:
@@ -161,6 +172,57 @@ class NotificationService:
             }
         )
         logger.info("email_sent", to=to_email, title=title)
+
+    async def _send_email_smtp(self, to_email: str, title: str, body: str, data: dict[str, Any]) -> None:
+        """Send email notification via open-source SMTP (Nodemailer style)."""
+        import aiosmtplib
+        from email.message import EmailMessage
+
+        action_url = data.get("action_url", "")
+        action_html = (
+            f'<p style="margin-top:16px;">'
+            f'<a href="{action_url}" style="background:#4F46E5;color:white;padding:10px 20px;'
+            f'border-radius:6px;text-decoration:none;">View in PariKrama</a></p>'
+            if action_url
+            else ""
+        )
+
+        message = EmailMessage()
+        message["From"] = settings.SMTP_FROM_EMAIL
+        message["To"] = to_email
+        message["Subject"] = f"PariKrama: {title}"
+
+        html_content = f"""
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+            <h2 style="color:#4F46E5;margin-bottom:8px;">{title}</h2>
+            <p style="color:#374151;line-height:1.6;">{body}</p>
+            {action_html}
+            <hr style="margin:24px 0;border:none;border-top:1px solid #E5E7EB;">
+            <p style="color:#9CA3AF;font-size:12px;">
+                You are receiving this from PariKrama AI Travel Planner.
+                <a href="http://localhost:3000/settings" style="color:#6B7280;">
+                    Manage notification preferences
+                </a>
+            </p>
+        </div>
+        """
+        message.set_content(body)
+        message.add_alternative(html_content, subtype="html")
+
+        # SMTP SSL or TLS logic
+        use_tls = settings.SMTP_PORT == 587
+        use_ssl = settings.SMTP_PORT == 465
+
+        await aiosmtplib.send(
+            message,
+            hostname=settings.SMTP_HOST,
+            port=settings.SMTP_PORT,
+            username=settings.SMTP_USER if settings.SMTP_USER else None,
+            password=settings.SMTP_PASS if settings.SMTP_PASS else None,
+            use_tls=use_ssl,
+            start_tls=use_tls,
+        )
+        logger.info("email_sent_smtp", to=to_email, title=title)
 
     async def _send_push(self, fcm_token: str, title: str, body: str, data: dict[str, Any]) -> None:
         """

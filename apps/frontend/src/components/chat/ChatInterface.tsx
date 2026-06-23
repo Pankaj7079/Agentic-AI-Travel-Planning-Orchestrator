@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import {
   Send, Sparkles, Map, Compass, Bot, User, AlertCircle,
   CheckCircle, Clock, Loader2, Plane, Hotel, DollarSign,
-  Calendar, Mic, MicOff, RotateCcw, ChevronRight
+  Calendar, RotateCcw, ChevronRight
 } from "lucide-react";
 
 interface Message {
@@ -25,11 +25,11 @@ interface AgentStatus {
 }
 
 const AGENT_DEFS: AgentStatus[] = [
-  { name: "orchestrator", label: "Parsing Request", status: "pending", icon: Compass },
-  { name: "research", label: "Researching Destination", status: "pending", icon: Map },
-  { name: "booking", label: "Finding Hotels & Transport", status: "pending", icon: Hotel },
-  { name: "budget_optimizer", label: "Optimizing Budget", status: "pending", icon: DollarSign },
-  { name: "itinerary_finalizer", label: "Crafting Itinerary", status: "pending", icon: Calendar },
+  { name: "orchestrator",        label: "Parsing Request",        status: "pending", icon: Compass },
+  { name: "research",            label: "Researching Destination", status: "pending", icon: Map },
+  { name: "booking",             label: "Finding Hotels & Transport", status: "pending", icon: Hotel },
+  { name: "budget_optimizer",    label: "Optimizing Budget",      status: "pending", icon: DollarSign },
+  { name: "itinerary_finalizer", label: "Crafting Itinerary",     status: "pending", icon: Calendar },
 ];
 
 const WELCOME_SUGGESTIONS = [
@@ -38,6 +38,61 @@ const WELCOME_SUGGESTIONS = [
   "Explore Rajasthan in 7 days, couple trip, ₹40,000",
   "Quick weekend trip to Coorg from Bangalore",
 ];
+
+/**
+ * BUG-02 fix: Extract origin/destination/days/budget from user text so trip record
+ * is created with real data, not hardcoded placeholder values.
+ */
+function extractTripHints(text: string): {
+  origin: string; destination: string; days: number; budget_inr: number;
+} {
+  const t = text.toLowerCase();
+
+  // Extract days (e.g. "5 days", "5-day", "5 din")
+  const daysMatch = t.match(/(\d+)[\s-]?(day|days|din|d\b)/);
+  const days = daysMatch ? Math.min(30, Math.max(1, parseInt(daysMatch[1]))) : 5;
+
+  // Extract budget (e.g. ₹15,000 / 15k / 15000 / 15 hazar)
+  let budget = 15000;
+  const budgetMatch = t.match(/(?:rs\.?|₹|inr)?\s*(\d[\d,]*)\s*(?:k|000|hazar|lakh)?/i);
+  if (budgetMatch) {
+    let raw = parseInt(budgetMatch[1].replace(/,/g, ""));
+    if (t.includes("lakh") && raw < 100) raw *= 100000;
+    else if ((t.includes("k") || t.includes("hazar")) && raw < 1000) raw *= 1000;
+    if (raw >= 500) budget = raw;
+  }
+
+  // Extract from/to pattern — "from X to Y" or "X to Y" or "X se Y"
+  const fromToMatch =
+    t.match(/from\s+([a-z\s]+?)\s+to\s+([a-z\s]+?)(?:\s|$|,|under|with|for)/) ||
+    t.match(/([a-z\s]+?)\s+(?:to|se)\s+([a-z\s]+?)(?:\s|$|,|under|with|for)/);
+
+  let origin = "Delhi";
+  let destination = "Manali";
+
+  if (fromToMatch) {
+    origin = fromToMatch[1].trim();
+    destination = fromToMatch[2].trim();
+  } else {
+    // Try "trip to X from Y" pattern
+    const toFromMatch = t.match(/trip\s+to\s+([a-z\s]+?)(?:\s+from\s+([a-z\s]+?))?(?:\s|$|,|under|with)/);
+    if (toFromMatch) {
+      destination = toFromMatch[1].trim();
+      if (toFromMatch[2]) origin = toFromMatch[2].trim();
+    }
+  }
+
+  // Capitalize first letter of each word
+  const cap = (s: string) =>
+    s.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+  return {
+    origin: cap(origin.slice(0, 50)),
+    destination: cap(destination.slice(0, 50)),
+    days,
+    budget_inr: budget,
+  };
+}
 
 export function ChatInterface({ tripId }: { tripId?: string }) {
   const router = useRouter();
@@ -52,6 +107,7 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<number>(3000); // BUG-13: adaptive polling interval
 
   useEffect(() => {
     if (tripId) setActiveTripId(tripId);
@@ -61,71 +117,107 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, pendingApproval]);
 
-  // Poll trip status while planning
-  const pollTripStatus = useCallback(async (tid: string) => {
-    try {
-      const status = await api.get<any>(`/api/v1/trips/${tid}/status`);
-      
-      // Update agent statuses based on current_agent
-      if (status.current_agent) {
-        setAgents(prev => prev.map(a => {
-          const idx = AGENT_DEFS.findIndex(d => d.name === a.name);
-          const currentIdx = AGENT_DEFS.findIndex(d => d.name === status.current_agent);
-          if (idx < currentIdx) return { ...a, status: "completed" as const };
-          if (idx === currentIdx) return { ...a, status: "running" as const };
-          return a;
-        }));
+  // BUG-03 fix: cleanup polling on component unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
       }
-
-      if (status.status === "awaiting_approval") {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        setIsLoading(false);
-        
-        // Use approval_id from status response if available
-        if (status.approval_id) {
-          try {
-            const approval = await api.get<any>(`/api/v1/approvals/${status.approval_id}`);
-            setPendingApproval(approval);
-            addMessage("assistant", `⚠️ **Approval needed!** ${approval.description || "The agents need your confirmation before proceeding."}`);
-          } catch {
-            // fallback: list all pending approvals
-            const approvals = await api.get<any>("/api/v1/approvals").catch(() => []);
-            const pending = Array.isArray(approvals) ? approvals.filter((a: any) => a.status === "pending") : [];
-            if (pending.length > 0) {
-              setPendingApproval(pending[0]);
-              addMessage("assistant", `⚠️ **Approval needed!** ${pending[0].description || "Please review and approve to continue."}`);
-            }
-          }
-        }
-      } else if (status.is_complete) {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        if (status.status === "completed") {
-          setAgents(prev => prev.map(a => ({ ...a, status: "completed" as const })));
-          setPlanningDone(true);
-          addMessage("assistant", `🎉 **Your trip plan is ready!** I've crafted a detailed day-by-day itinerary tailored to your preferences and budget. Click "View Full Itinerary" to explore your complete trip plan!`, false);
-        } else if (status.status === "failed") {
-          setAgents(prev => prev.map(a => ({ ...a, status: a.status === "running" ? "failed" as const : a.status })));
-          addMessage("assistant", "❌ Planning encountered an issue. Please try again with more details about your destination and budget.", true);
-        } else if (status.status === "cancelled") {
-          addMessage("system", "Trip planning was cancelled.");
-        }
-        setIsLoading(false);
-      }
-    } catch (err) {
-      // Silently ignore polling errors (network hiccup)
-    }
+    };
   }, []);
 
-  const addMessage = (role: Message["role"], content: string, isError = false, agent?: string) => {
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(),
-      role, content, timestamp: new Date(), isError, agent
-    }]);
-  };
+  const addMessage = useCallback(
+    (role: Message["role"], content: string, isError = false, agent?: string) => {
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role, content, timestamp: new Date(), isError, agent,
+      }]);
+    },
+    [] // stable — only uses setMessages which is always stable
+  );
 
-  const resetAgents = () => {
-    setAgents(AGENT_DEFS.map(a => ({ ...a, status: "pending" })));
-  };
+  // BUG-13 fix: exponential-backoff polling (3s → 5s → 8s → 10s max)
+  const startPolling = useCallback((tid: string) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollIntervalRef.current = 3000;
+    let elapsed = 0;
+
+    const tick = async () => {
+      elapsed += pollIntervalRef.current;
+
+      // Backoff: after 30s → 5s, after 60s → 8s, after 90s → 10s
+      if (elapsed > 90000) pollIntervalRef.current = 10000;
+      else if (elapsed > 60000) pollIntervalRef.current = 8000;
+      else if (elapsed > 30000) pollIntervalRef.current = 5000;
+
+      try {
+        const status = await api.get<any>(`/api/v1/trips/${tid}/status`);
+
+        // Update agent progress bar
+        if (status.current_agent) {
+          setAgents(prev => prev.map(a => {
+            const idx = AGENT_DEFS.findIndex(d => d.name === a.name);
+            const currentIdx = AGENT_DEFS.findIndex(d => d.name === status.current_agent);
+            if (idx < currentIdx) return { ...a, status: "completed" as const };
+            if (idx === currentIdx) return { ...a, status: "running" as const };
+            return a;
+          }));
+        }
+
+        if (status.status === "awaiting_approval") {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          setIsLoading(false);
+
+          if (status.approval_id) {
+            try {
+              const approval = await api.get<any>(`/api/v1/approvals/${status.approval_id}`);
+              setPendingApproval(approval);
+              addMessage("assistant", `⚠️ **Approval needed!** ${approval.description || "The agents need your confirmation before proceeding."}`);
+            } catch {
+              const approvals = await api.get<any>("/api/v1/approvals").catch(() => []);
+              const pending = Array.isArray(approvals) ? approvals.filter((a: any) => a.status === "pending") : [];
+              if (pending.length > 0) {
+                setPendingApproval(pending[0]);
+                addMessage("assistant", `⚠️ **Approval needed!** ${pending[0].description || "Please review and approve to continue."}`);
+              }
+            }
+          }
+        } else if (status.is_complete) {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          pollingRef.current = null;
+
+          if (status.status === "completed") {
+            setAgents(prev => prev.map(a => ({ ...a, status: "completed" as const })));
+            setPlanningDone(true);
+            addMessage("assistant", `🎉 **Your trip plan is ready!** I've crafted a detailed day-by-day itinerary tailored to your preferences and budget. Click "View Full Itinerary" to explore your complete trip plan!`);
+          } else if (status.status === "failed") {
+            setAgents(prev => prev.map(a => ({ ...a, status: a.status === "running" ? "failed" as const : a.status })));
+            addMessage("assistant", "❌ Planning encountered an issue. Please try again with more details about your destination and budget.", true);
+          } else if (status.status === "cancelled") {
+            addMessage("system", "Trip planning was cancelled.");
+          }
+          setIsLoading(false);
+        }
+
+        // Schedule next poll with (possibly updated) interval
+        if (pollingRef.current !== null) {
+          pollingRef.current = setTimeout(tick, pollIntervalRef.current) as any;
+        }
+      } catch {
+        // Silent network hiccup — retry with backoff
+        if (pollingRef.current !== null) {
+          pollingRef.current = setTimeout(tick, pollIntervalRef.current) as any;
+        }
+      }
+    };
+
+    // Mark ref as active (not null)
+    pollingRef.current = setTimeout(tick, pollIntervalRef.current) as any;
+  }, [addMessage]);
+
+  const resetAgents = () => setAgents(AGENT_DEFS.map(a => ({ ...a, status: "pending" })));
 
   const handleSend = async (text?: string) => {
     const query = (text || input).trim();
@@ -137,19 +229,20 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
     setPlanningDone(false);
     setPendingApproval(null);
     resetAgents();
-
     addMessage("user", query);
 
-    // Step 1: Create a trip record (with minimal placeholder data)
+    // BUG-02 fix: parse real origin/destination/days/budget from user text
+    const hints = extractTripHints(query);
+
     let currentTripId = activeTripId;
     if (!currentTripId) {
       addMessage("system", "🚀 Initializing trip planning session...");
       try {
         const createRes = await api.post<any>("/api/v1/trips", {
-          origin: "Delhi",
-          destination: "TBD",
-          days: 5,
-          budget_inr: 15000,
+          origin: hints.origin,
+          destination: hints.destination,
+          days: hints.days,
+          budget_inr: hints.budget_inr,
           travelers: 1,
           preferences: {
             interests: [],
@@ -158,8 +251,8 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
             transport_preference: "any",
             pace: "moderate",
             special_requirements: "",
-            language: "en"
-          }
+            language: "en",
+          },
         });
         if (!createRes?.id) throw new Error("No trip ID returned");
         currentTripId = createRes.id;
@@ -171,22 +264,16 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
       }
     }
 
-    // Mark orchestrator as running
     setAgents(prev => prev.map((a, i) => i === 0 ? { ...a, status: "running" } : a));
     addMessage("system", "🤖 AI agents are analyzing your request...");
 
-    // Step 2: Kick off the LangGraph planning pipeline (async, returns immediately)
     try {
-      const planRes = await api.post<any>(`/api/v1/trips/${currentTripId}/plan`, {
-        raw_input: query,
-      });
+      await api.post<any>(`/api/v1/trips/${currentTripId}/plan`, { raw_input: query });
+      addMessage("system", "🤖 AI agents are now working on your trip. This may take 30–90 seconds...");
 
-      // The /plan endpoint always returns 202 immediately with status: "planning"
-      // Start polling for status updates
-      addMessage("system", "🤖 AI agents are now working on your trip. This may take 30-90 seconds...");
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      pollingRef.current = setInterval(() => pollTripStatus(currentTripId!), 3000);
-
+      // BUG-04 fix: use startPolling which has stable addMessage ref via useCallback
+      // BUG-13 fix: adaptive backoff polling started here
+      startPolling(currentTripId!);
     } catch (err: any) {
       addMessage("assistant", `⚠️ ${err.message || "Failed to start planning. Please check you are logged in and try again."}`, true);
       setIsLoading(false);
@@ -199,16 +286,13 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
     const endpoint = approved ? "approve" : "reject";
     try {
       await api.post(`/api/v1/approvals/${pendingApproval.id || pendingApproval.approval_id}/${endpoint}`, {
-        modifications: null
+        modifications: null,
       });
       setPendingApproval(null);
       if (approved) {
         addMessage("system", "✅ Approval confirmed! Finalizing your itinerary...");
         setIsLoading(true);
-        // Poll for completion
-        if (activeTripId) {
-          pollingRef.current = setInterval(() => pollTripStatus(activeTripId), 2500);
-        }
+        if (activeTripId) startPolling(activeTripId);
       } else {
         addMessage("assistant", "Understood, I've cancelled that option. Would you like me to find alternative options within a lower budget?");
       }
@@ -225,7 +309,10 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
   };
 
   const startNew = () => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
     setActiveTripId(undefined);
     setMessages([]);
     setAgents(AGENT_DEFS.map(a => ({ ...a, status: "pending" })));
@@ -235,20 +322,19 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
     setIsLoading(false);
   };
 
-  const formatContent = (text: string) => {
-    return text
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n/g, '<br/>');
-  };
+  const formatContent = (text: string) =>
+    text
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\n/g, "<br/>");
 
   return (
     <div className="flex flex-col h-full min-h-[600px] glass rounded-2xl border border-white/10 overflow-hidden">
-      
+
       {/* ── Header ── */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-gradient-to-r from-primary/10 to-indigo-500/5">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg glow-primary-sm">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg">
               <Sparkles className="h-5 w-5 text-white" />
             </div>
             {isLoading && (
@@ -320,7 +406,7 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
               Describe your dream trip in plain language — our AI agents will craft a complete, personalized itinerary for you.
             </p>
             <div className="grid grid-cols-1 gap-2 w-full max-w-md">
-              {WELCOME_SUGGESTIONS.map((suggestion) => (
+              {WELCOME_SUGGESTIONS.map(suggestion => (
                 <button
                   key={suggestion}
                   onClick={() => handleSend(suggestion)}
@@ -334,12 +420,11 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
           </div>
         )}
 
-        {messages.map((msg) => (
+        {messages.map(msg => (
           <div
             key={msg.id}
             className={`flex gap-3 msg-enter ${msg.role === "user" ? "flex-row-reverse" : ""}`}
           >
-            {/* Avatar */}
             {(msg.role === "assistant" || msg.role === "agent") && (
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
                 <Bot className="h-4 w-4 text-white" />
@@ -356,7 +441,6 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
               </div>
             )}
 
-            {/* Bubble */}
             <div className={`max-w-[80%] ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
               <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                 msg.role === "user"
@@ -445,14 +529,14 @@ export function ChatInterface({ tripId }: { tripId?: string }) {
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder='Describe your trip... e.g. "5 days in Manali from Delhi under ₹15,000"'
               disabled={isLoading}
               rows={1}
               className="w-full px-4 py-3 pr-12 rounded-xl bg-secondary/50 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all resize-none min-h-[46px] max-h-32 disabled:opacity-50"
               style={{ height: "auto" }}
-              onInput={(e) => {
+              onInput={e => {
                 const el = e.target as HTMLTextAreaElement;
                 el.style.height = "auto";
                 el.style.height = Math.min(el.scrollHeight, 128) + "px";
