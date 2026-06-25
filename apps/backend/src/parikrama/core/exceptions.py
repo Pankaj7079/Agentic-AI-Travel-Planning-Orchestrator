@@ -65,3 +65,14 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "path": str(request.url.path),
             },
         )
+
+    @app.exception_handler(Exception)
+    async def handle_generic_error(request: Request, exc: Exception):
+        return ORJSONResponse(
+            status_code=500,
+            content={
+                "error": "InternalServerError",
+                "detail": str(exc)[:500],
+                "path": str(request.url.path),
+            },
+        )
