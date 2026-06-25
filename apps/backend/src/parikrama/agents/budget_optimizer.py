@@ -77,6 +77,7 @@ async def budget_optimizer_node(
 
     # Broadcast to WebSocket
     from parikrama.api.websocket.manager import ws_manager
+
     await ws_manager.broadcast_agent_update(
         user_id=state["user_id"],
         trip_id=state["trip_id"],
@@ -128,12 +129,15 @@ async def budget_optimizer_node(
         trip_id=state["trip_id"],
         agent="budget_optimizer",
         status="completed",
-        message=f"Budget calculation complete: Estimated ₹{total_est:,.0f} (" +
-                ("within budget" if is_within else "exceeds budget, applied cost-saving tips") + ").",
+        message=f"Budget calculation complete: Estimated ₹{total_est:,.0f} ("
+        + ("within budget" if is_within else "exceeds budget, applied cost-saving tips")
+        + ").",
     )
 
     return {
-        **state,
+        # ONLY return keys this node writes — do NOT spread **state.
+        # LangGraph merges node outputs; spreading state would re-write all
+        # upstream keys (trip_id, user_id, request, etc.) unnecessarily.
         "budget_breakdown": BudgetBreakdown(**breakdown) if breakdown else None,
         "is_within_budget": is_within,
         "current_agent": "budget_optimizer",

@@ -102,11 +102,14 @@ class HybridRetriever:
         ``<=>`` is the cosine distance operator; 1 - distance = similarity.
         """
         query_embedding = embedding_service.embed_text(query)
+        # Build vector literal directly in SQL — asyncpg uses positional ($1) params
+        # and does NOT support named-param type casts like ':embedding::vector'.
+        # The embedding list contains only floats, so string interpolation is safe.
         embedding_str = f"[{','.join(str(x) for x in query_embedding)}]"
 
-        # Build dynamic WHERE clauses
+        # Build dynamic WHERE clauses using named params (strings/ints are fine)
         conditions: list[str] = []
-        params: dict = {"embedding": embedding_str, "limit": top_k}
+        params: dict = {"limit": top_k}
 
         if user_id:
             conditions.append("d.user_id = :user_id::uuid")
@@ -122,6 +125,7 @@ class HybridRetriever:
         if conditions:
             where_clause = "AND " + " AND ".join(conditions)
 
+        # Embed vector literal directly in SQL (safe — numeric floats only)
         sql = text(
             f"""
             SELECT
@@ -129,11 +133,11 @@ class HybridRetriever:
                 dc.content,
                 dc.metadata,
                 dc.document_id,
-                1 - (dc.embedding <=> :embedding::vector) AS similarity
+                1 - (dc.embedding <=> '{embedding_str}'::vector) AS similarity
             FROM document_chunks dc
             JOIN documents d ON d.id = dc.document_id
             WHERE 1=1 {where_clause}
-            ORDER BY dc.embedding <=> :embedding::vector
+            ORDER BY dc.embedding <=> '{embedding_str}'::vector
             LIMIT :limit
             """
         )

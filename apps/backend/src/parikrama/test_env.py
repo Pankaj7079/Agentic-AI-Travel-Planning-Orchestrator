@@ -2,6 +2,7 @@
 PariKrama .env live key validator.
 Run with: uv run python src/parikrama/test_env.py
 """
+
 import asyncio
 import json
 import os
@@ -23,13 +24,16 @@ for line in env_path.read_text(encoding="utf-8").splitlines():
 
 results = []
 
+
 def ok(name, detail=""):
     results.append((name, "PASS", detail))
     print(f"  [PASS] {name:<22} {detail}")
 
+
 def fail(name, detail=""):
     results.append((name, "FAIL", detail))
     print(f"  [FAIL] {name:<22} {detail}")
+
 
 def warn(name, detail=""):
     results.append((name, "WARN", detail))
@@ -40,6 +44,7 @@ def warn(name, detail=""):
 print("\nTesting Gemini...", flush=True)
 try:
     from google import genai as google_genai
+
     key = os.environ.get("GEMINI_API_KEY", "")
     if not key:
         fail("GEMINI", "GEMINI_API_KEY is empty")
@@ -52,11 +57,15 @@ except ImportError:
     # Try legacy package
     try:
         import google.generativeai as genai
+
         key = os.environ.get("GEMINI_API_KEY", "")
         genai.configure(api_key=key)
         model = genai.GenerativeModel("gemini-1.5-flash")
         r = model.generate_content("Reply with exactly: OK")
-        warn("GEMINI", f"Works via OLD package (google.generativeai) - should upgrade to google-genai. Response: {r.text.strip()[:20]}")
+        warn(
+            "GEMINI",
+            f"Works via OLD package (google.generativeai) - should upgrade to google-genai. Response: {r.text.strip()[:20]}",
+        )
     except Exception as e2:
         fail("GEMINI", str(e2)[:120])
 except Exception as e:
@@ -66,6 +75,7 @@ except Exception as e:
 print("Testing Groq...", flush=True)
 try:
     from groq import Groq
+
     key = os.environ.get("GROQ_API_KEY", "")
     if not key:
         fail("GROQ", "GROQ_API_KEY is empty")
@@ -83,9 +93,12 @@ except Exception as e:
 
 # ── 3. PostgreSQL ─────────────────────────────────────────────────────────────
 print("Testing PostgreSQL...", flush=True)
+
+
 async def _test_pg():
     try:
         import asyncpg
+
         db_url = os.environ.get("DATABASE_URL", "").replace("+asyncpg", "")
         conn = await asyncpg.connect(db_url, timeout=5)
         ver = await conn.fetchval("SELECT version()")
@@ -97,13 +110,17 @@ async def _test_pg():
     except Exception as e:
         fail("POSTGRES", str(e)[:120])
 
+
 asyncio.run(_test_pg())
 
 # ── 4. Redis ──────────────────────────────────────────────────────────────────
 print("Testing Redis...", flush=True)
+
+
 async def _test_redis():
     try:
         import redis.asyncio as aioredis
+
         url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
         r = aioredis.from_url(url, socket_connect_timeout=3)
         await r.ping()
@@ -112,6 +129,7 @@ async def _test_redis():
         ok("REDIS", f"v{info.get('redis_version', '?')} PONG received")
     except Exception as e:
         fail("REDIS", str(e)[:120])
+
 
 asyncio.run(_test_redis())
 
@@ -160,7 +178,9 @@ try:
             headers={"x-api-key": key},
         )
         with urllib.request.urlopen(req, timeout=8) as resp:
-            tracing_str = "tracing=ON" if tracing == "true" else "tracing=OFF (set LANGCHAIN_TRACING_V2=true)"
+            tracing_str = (
+                "tracing=ON" if tracing == "true" else "tracing=OFF (set LANGCHAIN_TRACING_V2=true)"
+            )
             ok("LANGSMITH", f"Key valid | {tracing_str}")
 except Exception as e:
     fail("LANGSMITH", str(e)[:120])
@@ -248,7 +268,10 @@ else:
 # ── 15. DB_LOG ────────────────────────────────────────────────────────────────
 db_log = os.environ.get("DB_LOG", "false")
 if db_log.lower() == "true":
-    warn("DB_LOG", "SQL logging ENABLED - will fill database.log fast in dev. Set DB_LOG=false for prod.")
+    warn(
+        "DB_LOG",
+        "SQL logging ENABLED - will fill database.log fast in dev. Set DB_LOG=false for prod.",
+    )
 else:
     ok("DB_LOG", "SQL logging OFF (good for production)")
 

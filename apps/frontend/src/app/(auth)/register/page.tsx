@@ -27,13 +27,28 @@ export default function RegisterPage() {
     setLoading(true);
     setError("");
 
+    // Basic client-side validation
+    if (name.trim().length < 2) {
+      setError("Full name must be at least 2 characters.");
+      setLoading(false);
+      return;
+    }
+
     try {
       const BASE_URL = getBaseUrl();
-      const regResponse = await fetch(`${BASE_URL}/api/v1/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name: name.trim() }),
-      });
+
+      let regResponse: Response;
+      try {
+        regResponse = await fetch(`${BASE_URL}/api/v1/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, name: name.trim() }),
+        });
+      } catch (networkErr: any) {
+        throw new Error(
+          "Cannot connect to the server. Please make sure the backend is running on port 8000 and try again."
+        );
+      }
 
       if (!regResponse.ok) {
         const errorData = await regResponse.json().catch(() => ({}));
@@ -41,31 +56,51 @@ export default function RegisterPage() {
         if (Array.isArray(detail)) {
           throw new Error(detail.map((d: any) => d.msg).join(", "));
         }
-        throw new Error(typeof detail === "string" ? detail : "Registration failed. Please try again.");
+        if (regResponse.status === 409) {
+          throw new Error("An account with this email already exists. Please sign in instead.");
+        }
+        if (regResponse.status === 422) {
+          throw new Error(typeof detail === "string" ? detail : "Please check your details: valid email, name (2+ chars), password (8+ chars).");
+        }
+        throw new Error(typeof detail === "string" ? detail : `Registration failed (${regResponse.status}). Please try again.`);
       }
 
       const regData = await regResponse.json();
 
-      // Auto-login
-      const loginResponse = await fetch(`${BASE_URL}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+      // Auto-login after registration
+      let loginResponse: Response;
+      try {
+        loginResponse = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+      } catch {
+        // Registration succeeded but auto-login failed — redirect to login
+        setError("Account created! Please sign in to continue.");
+        setLoading(false);
+        router.push("/login");
+        return;
+      }
 
       if (!loginResponse.ok) {
-        throw new Error("Registered! Please sign in.");
+        setError("Account created! Please sign in to continue.");
+        setLoading(false);
+        router.push("/login");
+        return;
       }
 
       const loginData = await loginResponse.json();
+      const accessToken = loginData.tokens?.access_token ?? loginData.access_token;
+      const refreshToken = loginData.tokens?.refresh_token ?? loginData.refresh_token;
       const user = regData.user ?? {
         id: "new", email, name: name.trim(), role: "user" as const
       };
-      setAuth(user, loginData.tokens?.access_token ?? loginData.access_token, loginData.tokens?.refresh_token ?? loginData.refresh_token);
+      setAuth(user, accessToken, refreshToken);
       router.push("/dashboard");
 
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred");
+      setError(err.message || "An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }

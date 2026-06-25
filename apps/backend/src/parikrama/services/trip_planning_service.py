@@ -182,6 +182,7 @@ class TripPlanningService:
 
         # Broadcast completed status via WS
         from parikrama.api.websocket.manager import ws_manager
+
         await ws_manager.broadcast_trip_completed(user_id=user_id, trip_id=trip_id)
 
         log.info(

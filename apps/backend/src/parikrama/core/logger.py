@@ -27,18 +27,18 @@ Log format (JSON — one line per event, easy to parse with jq):
   }
 """
 
+import json
 import logging
 import logging.handlers
 import sys
-import json
-from pathlib import Path
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import structlog
 
-
 # ── JSON formatter: clean, no ANSI, one line per event ────────────────────────
+
 
 class JSONFormatter(logging.Formatter):
     """Write clean JSON logs — no ANSI escape codes, one line per record."""
@@ -51,12 +51,15 @@ class JSONFormatter(logging.Formatter):
             if isinstance(msg, str) and msg.startswith("{"):
                 return msg
             # Otherwise wrap into a minimal JSON
-            return json.dumps({
-                "ts": datetime.now(UTC).isoformat(),
-                "level": record.levelname.lower(),
-                "logger": record.name,
-                "event": msg,
-            }, ensure_ascii=False)
+            return json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "level": record.levelname.lower(),
+                    "logger": record.name,
+                    "event": msg,
+                },
+                ensure_ascii=False,
+            )
         except Exception:
             return record.getMessage()
 
@@ -73,6 +76,7 @@ class StructlogJSONFormatter(logging.Formatter):
 
 
 # ── Structured JSON renderer for structlog ────────────────────────────────────
+
 
 class PariKramaJSONRenderer:
     """
@@ -99,6 +103,7 @@ class PariKramaJSONRenderer:
 
 
 # ── Layer-aware log filter ─────────────────────────────────────────────────────
+
 
 class LayerFilter(logging.Filter):
     """Only pass records whose logger name matches a given layer prefix."""
@@ -127,12 +132,11 @@ class SQLFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         is_sql = record.name.startswith("sqlalchemy")
-        if is_sql and not self.debug_sql:
-            return False
-        return True
+        return not (is_sql and not self.debug_sql)
 
 
 # ── Main setup ────────────────────────────────────────────────────────────────
+
 
 def setup_logging(log_name: str = "parikrama", debug_sql: bool = False) -> None:
     """
@@ -140,7 +144,7 @@ def setup_logging(log_name: str = "parikrama", debug_sql: bool = False) -> None:
 
     Outputs:
       - Console  : coloured dev output (structlog ConsoleRenderer)
-      - logs/parikrama.log     : ALL events as clean JSON (rotating 10 MB × 5)
+      - logs/parikrama.log     : ALL events as clean JSON (rotating 10 MB x 5)
       - logs/errors.log        : ERROR+ only, JSON
       - logs/api_requests.log  : HTTP layer events
       - logs/agents.log        : LangGraph agent events
@@ -148,6 +152,7 @@ def setup_logging(log_name: str = "parikrama", debug_sql: bool = False) -> None:
       - logs/database.log      : SQLAlchemy (if debug_sql=True or DB_LOG=true env)
     """
     import os
+
     debug_sql = debug_sql or os.getenv("DB_LOG", "false").lower() == "true"
 
     # ── Directories ────────────────────────────────────────────────────────
@@ -160,6 +165,7 @@ def setup_logging(log_name: str = "parikrama", debug_sql: bool = False) -> None:
 
     # ── Determine log level from env ──────────────────────────────────────
     from parikrama.config import settings
+
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
 
     # ── Helper to build a rotating file handler ───────────────────────────
@@ -191,17 +197,27 @@ def setup_logging(log_name: str = "parikrama", debug_sql: bool = False) -> None:
 
     # ── Agent layer → agents.log ──────────────────────────────────────────
     agent_handler = _rotating("agents.log", max_mb=20)
-    agent_handler.addFilter(LayerFilter([
-        "parikrama.agents", "parikrama.services.async_planner",
-        "parikrama.llm",
-    ]))
+    agent_handler.addFilter(
+        LayerFilter(
+            [
+                "parikrama.agents",
+                "parikrama.services.async_planner",
+                "parikrama.llm",
+            ]
+        )
+    )
 
     # ── Auth layer → auth.log ─────────────────────────────────────────────
     auth_handler = _rotating("auth.log", max_mb=5)
-    auth_handler.addFilter(LayerFilter([
-        "parikrama.services.auth_service", "parikrama.core.security",
-        "parikrama.api.v1.auth",
-    ]))
+    auth_handler.addFilter(
+        LayerFilter(
+            [
+                "parikrama.services.auth_service",
+                "parikrama.core.security",
+                "parikrama.api.v1.auth",
+            ]
+        )
+    )
 
     # ── Database layer → database.log (only if debug_sql) ─────────────────
     db_handler = _rotating("database.log", max_mb=50, backups=2)
@@ -244,7 +260,7 @@ def setup_logging(log_name: str = "parikrama", debug_sql: bool = False) -> None:
 
     structlog.configure(
         processors=[
-            structlog.contextvars.merge_contextvars,        # correlation_id, etc.
+            structlog.contextvars.merge_contextvars,  # correlation_id, etc.
             structlog.stdlib.filter_by_level,
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.stdlib.add_logger_name,
@@ -266,6 +282,7 @@ def setup_logging(log_name: str = "parikrama", debug_sql: bool = False) -> None:
 
     # ── Startup banner ─────────────────────────────────────────────────────
     import structlog as sl
+
     log = sl.get_logger("parikrama.core.logger")
     log.info(
         "logging_initialized",

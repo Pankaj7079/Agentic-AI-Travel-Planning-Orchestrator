@@ -61,6 +61,7 @@ async def booking_node(
 
     # Broadcast to WebSocket
     from parikrama.api.websocket.manager import ws_manager
+
     await ws_manager.broadcast_agent_update(
         user_id=state["user_id"],
         trip_id=state["trip_id"],
@@ -82,17 +83,19 @@ async def booking_node(
     # ── Flag expensive items requiring approval ───────────────────────────────
     requires_approval = _check_approval_needed(hotels_result, transport_result, total_budget, days)
 
-    messages: list[AgentMessage] = list(state.get("messages", []))
-    messages.append(
+    # Only return NEW messages — LangGraph's operator.add reducer concatenates
+    # them onto the existing list. Returning the full list causes duplication
+    # when parallel nodes (research + booking) both read and extend it.
+    new_messages: list[AgentMessage] = [
         AgentMessage(
             agent="booking",
             content=(
                 f"Found {len(hotels_result)} hotel options and "
                 f"{len(transport_result)} transport options. "
-                f"{'⚠️ Approval needed for expensive items.' if requires_approval else 'All within budget.'}"
+                f"{'Approval needed for expensive items.' if requires_approval else 'All within budget.'}"
             ),
         )
-    )
+    ]
 
     log.info(
         "booking_completed",
@@ -106,8 +109,12 @@ async def booking_node(
         trip_id=state["trip_id"],
         agent="booking",
         status="completed",
-        message=f"Booking complete: found {len(hotels_result)} hotels and {len(transport_result)} transport options. " +
-                ("Requires approval for higher-tier options." if requires_approval else "All options within budget."),
+        message=f"Booking complete: found {len(hotels_result)} hotels and {len(transport_result)} transport options. "
+        + (
+            "Requires approval for higher-tier options."
+            if requires_approval
+            else "All options within budget."
+        ),
     )
 
     return {
@@ -117,7 +124,7 @@ async def booking_node(
         "transport_options": transport_result,
         "requires_approval": requires_approval,
         "current_agent": "booking",
-        "messages": messages,
+        "messages": new_messages,
         "errors": errors,
     }
 
@@ -131,13 +138,23 @@ async def _search_hotels_safe(
     max_per_night: float,
     errors: list[str],
 ) -> list[HotelOption]:
-    """Search hotels with error capture."""
+    """Search hotels with error capture. Returns exactly 3 options: budget, mid, premium."""
     try:
         results = await search_hotels(destination, nights, max_per_night)
-        return [
+        hotels = [
             HotelOption(**{k: v for k, v in h.items() if k in HotelOption.__annotations__})
             for h in results
         ]
+        # Ensure exactly 3 options: budget, mid, premium
+        if len(hotels) >= 3:
+            # Pick cheapest, middle, most expensive
+            sorted_by_price = sorted(hotels, key=lambda h: h.get("price_per_night_inr", 0))
+            return [
+                sorted_by_price[0],
+                sorted_by_price[len(sorted_by_price) // 2],
+                sorted_by_price[-1],
+            ]
+        return hotels[:3]
     except Exception as exc:
         logger.warning("hotel_search_error", error=str(exc)[:100])
         errors.append(f"Hotel search failed: {exc}")
@@ -150,13 +167,27 @@ async def _search_transport_safe(
     max_price: float,
     errors: list[str],
 ) -> list[TransportOption]:
-    """Search transport with error capture."""
+    """Search transport with error capture. Returns exactly 3 options: bus, train, flight (or cheapest 3)."""
     try:
         results = await search_transport(origin, destination, max_price)
-        return [
+        transport = [
             TransportOption(**{k: v for k, v in t.items() if k in TransportOption.__annotations__})
             for t in results
         ]
+        # Ensure exactly 3 options: pick by type diversity if possible
+        if len(transport) >= 3:
+            # Try to get one of each type: bus, train, flight
+            by_type: dict[str, TransportOption] = {}
+            for t in transport:
+                t_type = t.get("type", "")
+                if t_type not in by_type:
+                    by_type[t_type] = t
+            if len(by_type) >= 3:
+                return list(by_type.values())[:3]
+            # Fallback: cheapest 3
+            sorted_by_price = sorted(transport, key=lambda t: t.get("price_inr", 0))
+            return sorted_by_price[:3]
+        return transport[:3]
     except Exception as exc:
         logger.warning("transport_search_error", error=str(exc)[:100])
         errors.append(f"Transport search failed: {exc}")

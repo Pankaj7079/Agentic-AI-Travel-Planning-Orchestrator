@@ -159,11 +159,15 @@ class TripService:
         approval_id = None
         if trip.status == "awaiting_approval":
             from parikrama.models.approval import ApprovalRequest
+
             approvals_result = await self.db.execute(
-                select(ApprovalRequest).where(
+                select(ApprovalRequest)
+                .where(
                     ApprovalRequest.trip_id == trip.id,
                     ApprovalRequest.status == "pending",
-                ).order_by(ApprovalRequest.created_at.desc()).limit(1)
+                )
+                .order_by(ApprovalRequest.created_at.desc())
+                .limit(1)
             )
             approval = approvals_result.scalar_one_or_none()
             if approval:
@@ -178,6 +182,7 @@ class TripService:
             "is_complete": trip.status in ("completed", "failed", "cancelled", "awaiting_approval"),
             "approval_id": approval_id,
             "has_result": bool(trip.result and trip.result.get("itinerary")),
+            "error": _extract_error(trip),
         }
 
     # ── Private helpers ───────────────────────────────────────────────
@@ -208,3 +213,24 @@ def _status_message(status: str, latest_run: AgentRun | None) -> str:
         "cancelled": "Trip cancelled.",
     }
     return messages.get(status, "Processing...")
+
+
+def _extract_error(trip: Trip) -> str | None:
+    """Extract user-friendly error message from trip result."""
+    if trip.status != "failed":
+        return None
+    result = trip.result or {}
+    error = result.get("error", "")
+    if not error:
+        return "An unexpected error occurred during planning."
+    # Make error user-friendly — strip technical details
+    if "Invalid trip request:" in error:
+        return error.replace("Invalid trip request: ", "")
+    if "Could not determine" in error:
+        return f"Could not parse your request: {error}"
+    if "timeout" in error.lower():
+        return "The planning service timed out. Please try again with a simpler request."
+    if "LLM" in error or "gemini" in error.lower() or "groq" in error.lower():
+        return "AI service temporarily unavailable. Please try again in a moment."
+    # For other errors, return a sanitized version (max 200 chars)
+    return error[:200] if len(error) > 200 else error

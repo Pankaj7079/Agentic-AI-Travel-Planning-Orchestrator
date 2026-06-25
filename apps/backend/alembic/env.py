@@ -1,6 +1,7 @@
 """Alembic migration environment wired to our async engine."""
 
 import asyncio
+import contextlib
 from logging.config import fileConfig
 
 from alembic import context
@@ -17,10 +18,8 @@ config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 if config.config_file_name is not None:
-    try:
+    with contextlib.suppress(KeyError):
         fileConfig(config.config_file_name)
-    except KeyError:
-        pass
 
 target_metadata = Base.metadata
 

@@ -303,16 +303,18 @@ class ApprovalService:
         trip.status = "planning"
         await self.db.flush()
 
-        # Dispatch background planning (it will resume from where it left off)
+        # Dispatch background planning — run_planning_background creates its
+        # own DB session, so it is fully decoupled from this request's session.
         import asyncio
-        asyncio.create_task(
+
+        _resume_task = asyncio.create_task(
             run_planning_background(
                 trip_id=trip_id,
                 user_id=user_id,
                 raw_input=raw_input,
             )
         )
-        logger.info("pipeline_resume_dispatched", trip_id=trip_id)
+        logger.info("pipeline_resume_dispatched", trip_id=trip_id, task_id=id(_resume_task))
 
     @staticmethod
     def _serialize(approval: ApprovalRequest) -> dict[str, Any]:

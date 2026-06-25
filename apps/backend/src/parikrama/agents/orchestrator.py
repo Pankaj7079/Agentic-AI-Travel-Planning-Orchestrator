@@ -42,16 +42,25 @@ Extract these fields:
 Important parsing rules:
 - If budget has no currency → assume INR
 - "5 din" = 5 days, "ek hafte" = 7 days
+- If days is not mentioned, default to 7 (one week trip)
 - "sasta" = budget style, "accha hotel" = mid style
 - "family trip" or "hum 4 log" → multiple travelers
 - "15k", "15 hazar", "fifteen thousand" → 15000
 - "Mumbai se Goa" → origin: Mumbai, destination: Goa
 - Remove "trip", "travel", "jaana hai" etc. from place names
+- If the origin is NOT explicitly mentioned, default to "Delhi"
+- If only a region is mentioned (e.g. "Rajasthan", "Kerala"), pick the most popular tourist city as destination (e.g. "Jaipur", "Kochi")
 
 Return ONLY valid JSON with no markdown fencing, no explanation.
 
-Example:
-{"origin":"Delhi","destination":"Manali","days":5,"budget_inr":15000,"travelers":1,"preferences":{"interests":["sightseeing","adventure"],"food":"any","style":"budget"},"language":"en"}"""
+Example 1 — full info:
+{"origin":"Delhi","destination":"Manali","days":5,"budget_inr":15000,"travelers":1,"preferences":{"interests":["sightseeing","adventure"],"food":"any","style":"budget"},"language":"en"}
+
+Example 2 — no origin (default to Delhi):
+{"origin":"Delhi","destination":"Rajasthan","days":7,"budget_inr":40000,"travelers":2,"preferences":{"interests":["heritage","culture"],"food":"any","style":"mid"},"language":"en"}
+
+Example 3 — Hinglish:
+{"origin":"Mumbai","destination":"Goa","days":3,"budget_inr":20000,"travelers":4,"preferences":{"interests":["beach","nightlife"],"food":"any","style":"mid"},"language":"hinglish"}"""
 
 
 async def orchestrator_node(
@@ -77,6 +86,7 @@ async def orchestrator_node(
 
     # Broadcast to WebSocket
     from parikrama.api.websocket.manager import ws_manager
+
     await ws_manager.broadcast_agent_update(
         user_id=state["user_id"],
         trip_id=state["trip_id"],
@@ -110,9 +120,9 @@ async def orchestrator_node(
 
     # Build typed TripRequest
     trip_request: TripRequest = {
-        "origin": str(parsed.get("origin", "")).strip(),
+        "origin": str(parsed.get("origin", "")).strip() or "Delhi",
         "destination": str(parsed.get("destination", "")).strip(),
-        "days": int(parsed.get("days", 3)),
+        "days": int(parsed.get("days", 0)) or 7,  # default to 7 if LLM returns 0 or empty
         "budget_inr": float(parsed.get("budget_inr", 10000)),
         "travelers": int(parsed.get("travelers", 1)),
         "preferences": parsed.get(
@@ -153,12 +163,14 @@ async def orchestrator_node(
     )
 
     return {
-        **state,
+        # ONLY return keys this node writes — do NOT spread **state.
+        # LangGraph merges node outputs; spreading state would re-write all
+        # input keys (trip_id, user_id, raw_input) unnecessarily.
         "request": trip_request,
         "current_agent": "orchestrator",
         "status": "planning",
         "messages": new_messages,  # only new — LangGraph adds to existing
-        "errors": [],              # no new errors from orchestrator at this point
+        "errors": [],  # no new errors from orchestrator at this point
     }
 
 
@@ -190,7 +202,7 @@ def _validate_trip_request(req: TripRequest) -> None:
 
     days = req.get("days", 0)
     if not (1 <= days <= 30):
-        errors.append(f"Trip duration must be 1-30 days, got {days}")
+        errors.append(f"Trip duration must be 1-30 days (got {days})")
 
     budget = req.get("budget_inr", 0)
     if budget < 1000:

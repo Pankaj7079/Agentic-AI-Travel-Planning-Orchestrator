@@ -86,6 +86,7 @@ class LLMRouter:
         prompt: str,
         system: str = "",
         temperature: float = 0.7,
+        max_tokens: int = 4096,
         force_provider: LLMProvider | None = None,
     ) -> LLMResponse:
         """Generate text using the best available provider.
@@ -94,6 +95,7 @@ class LLMRouter:
             prompt: User message / query text.
             system: Optional system prompt injected before the user message.
             temperature: Sampling temperature (0.0-1.0).
+            max_tokens: Maximum tokens in the response (default 4096).
             force_provider: Skip routing logic and use this provider directly.
 
         Returns:
@@ -103,7 +105,7 @@ class LLMRouter:
             LLMUnavailableError: When all available providers fail.
         """
         if force_provider == LLMProvider.GROQ:
-            return await self._call_groq(prompt, system, temperature)
+            return await self._call_groq(prompt, system, temperature, max_tokens)
         if force_provider == LLMProvider.GEMINI:
             return await self._call_gemini_or_raise(prompt, system, temperature)
 
@@ -116,7 +118,7 @@ class LLMRouter:
                 await self._record_gemini_error()
 
         if self._groq:
-            return await self._call_groq(prompt, system, temperature)
+            return await self._call_groq(prompt, system, temperature, max_tokens)
 
         raise LLMUnavailableError(
             "Gemini circuit is open and no Groq fallback is configured. Add GROQ_API_KEY to .env"
@@ -234,12 +236,14 @@ class LLMRouter:
             raise LLMUnavailableError("Gemini is not configured")
         return await self._gemini.generate(prompt, system, temperature)
 
-    async def _call_groq(self, prompt: str, system: str, temperature: float) -> LLMResponse:
+    async def _call_groq(
+        self, prompt: str, system: str, temperature: float, max_tokens: int = 4096
+    ) -> LLMResponse:
         if not self._groq:
             raise LLMUnavailableError("Groq is not configured")
         start = time.monotonic()
         try:
-            response = await self._groq.generate(prompt, system, temperature)
+            response = await self._groq.generate(prompt, system, temperature, max_tokens)
             await self._record_groq_call(int((time.monotonic() - start) * 1000))
             return response
         except Exception:

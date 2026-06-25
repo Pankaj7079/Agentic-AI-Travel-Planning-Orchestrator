@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
     # -- Database --
-    DATABASE_URL: str = "postgresql+asyncpg://parikrama:parikrama_dev_2024@localhost:5432/parikrama"
+    DATABASE_URL: str = "postgresql+asyncpg://parikrama:parikrama_dev_2024@127.0.0.1:5432/parikrama"
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
 
@@ -87,10 +87,13 @@ class Settings(BaseSettings):
     GROQ_PRIMARY_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_SECONDARY_MODEL: str = "llama3-8b-8192"
     GROQ_TIMEOUT_SECONDS: int = 15
-    LLM_FALLBACK_LATENCY_THRESHOLD_MS: int = 10000
+    LLM_FALLBACK_LATENCY_THRESHOLD_MS: int = 45000
     LLM_FALLBACK_ERROR_THRESHOLD: int = 3
     LLM_FALLBACK_ERROR_WINDOW_SECONDS: int = 60
     LLM_HEALTH_CHECK_INTERVAL_SECONDS: int = 30
+
+    # -- Web Search --
+    TAVILY_API_KEY: str = ""
 
     # -- Embeddings --
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
@@ -140,3 +143,15 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore[call-arg]
+
+# Log loaded LLM config at startup for debugging.
+# Use structlog (not stdlib logging) so keyword args work correctly.
+import structlog
+
+_startup_log = structlog.get_logger("parikrama.config")
+_startup_log.info(
+    "llm_config_loaded",
+    latency_threshold_ms=settings.LLM_FALLBACK_LATENCY_THRESHOLD_MS,
+    error_threshold=settings.LLM_FALLBACK_ERROR_THRESHOLD,
+    gemini_model=settings.GEMINI_MODEL,
+)

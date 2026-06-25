@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 try:
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
     PROMETHEUS_AVAILABLE = True
 except ImportError:
     PROMETHEUS_AVAILABLE = False
@@ -90,4 +91,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

@@ -13,8 +13,7 @@ Design:
 
 from __future__ import annotations
 
-import asyncio
-from typing import Annotated, Any
+from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -99,7 +98,9 @@ async def plan_trip(
     5. **Itinerary Finalizer** — generates day-by-day plan
     """
     import uuid
+
     from sqlalchemy import select
+
     from parikrama.models.trip import Trip
 
     # Verify trip exists and belongs to user before dispatching
@@ -128,7 +129,8 @@ async def plan_trip(
     # Check LLM is configured before dispatching
     try:
         from parikrama.config import settings
-        from parikrama.llm.router import LLMRouter, LLMUnavailableError
+        from parikrama.llm.router import LLMRouter
+
         LLMRouter.from_settings(settings)
     except Exception as exc:
         raise HTTPException(
@@ -138,6 +140,7 @@ async def plan_trip(
 
     # Dispatch the background planning task
     from parikrama.services.async_planner import run_planning_background
+
     background_tasks.add_task(
         run_planning_background,
         trip_id=trip_id,
@@ -177,7 +180,9 @@ async def get_agent_runs(
     Useful for debugging slow or failed pipelines.
     """
     import uuid
+
     from sqlalchemy import select
+
     from parikrama.models.trip import AgentRun, Trip
 
     # Verify trip belongs to user
@@ -195,9 +200,7 @@ async def get_agent_runs(
         )
 
     runs_result = await db.execute(
-        select(AgentRun)
-        .where(AgentRun.trip_id == uuid.UUID(trip_id))
-        .order_by(AgentRun.created_at)
+        select(AgentRun).where(AgentRun.trip_id == uuid.UUID(trip_id)).order_by(AgentRun.created_at)
     )
     runs = runs_result.scalars().all()
 

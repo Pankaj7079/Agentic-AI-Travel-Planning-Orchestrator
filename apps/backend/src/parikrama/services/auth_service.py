@@ -180,8 +180,7 @@ class AuthService:
             user_id=user.id,
             token_hash=refresh_token_hash,
             expires_at=str(
-                datetime.now(UTC)
-                + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+                datetime.now(UTC) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
             ),
         )
         self.db.add(token_record)

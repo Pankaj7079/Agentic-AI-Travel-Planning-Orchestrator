@@ -78,6 +78,7 @@ async def itinerary_finalizer_node(
 
     # Broadcast to WebSocket
     from parikrama.api.websocket.manager import ws_manager
+
     await ws_manager.broadcast_agent_update(
         user_id=state["user_id"],
         trip_id=state["trip_id"],
@@ -122,13 +123,15 @@ async def itinerary_finalizer_node(
     )
 
     return {
-        **state,
+        # ONLY return keys this node writes — do NOT spread **state.
+        # LangGraph merges node outputs; spreading state would re-write all
+        # upstream keys (trip_id, user_id, request, etc.) unnecessarily.
         "itinerary": itinerary,
         "summary": summary,
         "status": "completed",
         "current_agent": "itinerary_finalizer",
         "messages": new_messages,  # only new — LangGraph adds to existing
-        "errors": errors,           # only new errors
+        "errors": errors,  # only new errors
     }
 
 
@@ -224,6 +227,7 @@ async def _generate_itinerary(
             prompt=f"Create a {days}-day itinerary for this trip:\n\n{context}",
             system=ITINERARY_SYSTEM_PROMPT,
             temperature=0.7,
+            max_tokens=8192,
         )
         raw = _extract_json_array(response.content)
         parsed = json.loads(raw)
@@ -240,7 +244,17 @@ async def _generate_itinerary(
     except (json.JSONDecodeError, ValueError, KeyError) as exc:
         logger.error("itinerary_parse_failed", error=str(exc)[:100])
         errors.append(f"Itinerary generation returned unexpected format: {exc}")
-        # Return empty itinerary — summary will carry the response
+
+        # If we got a response but couldn't parse JSON, try to salvage:
+        # 1. Return raw response as summary so user gets something useful
+        # 2. Generate a minimal fallback itinerary from available data
+        raw_content = response.content if (response and hasattr(response, "content")) else ""
+        if raw_content:
+            # Try one more time: extract individual day objects from markdown
+            minimal = _extract_days_from_markdown(raw_content, days, destination)
+            if minimal:
+                return minimal, raw_content
+            return [], raw_content
         return [], ""
 
 
@@ -282,13 +296,107 @@ def _generate_summary(
         )
 
 
+def _extract_days_from_markdown(text: str, days: int, destination: str) -> list[DayPlan]:
+    """Best-effort extraction of day plans from markdown-formatted LLM response.
+
+    When JSON parsing fails, this tries to find 'Day N:' patterns and build
+    minimal DayPlan objects so the user still gets a usable itinerary.
+    """
+    import re as _re
+
+    day_pattern = _re.compile(
+        r"Day\s+(\d+)\s*[:\-]\s*(.+?)(?=Day\s+\d+|\Z)", _re.DOTALL | _re.IGNORECASE
+    )
+    matches = day_pattern.findall(text)
+
+    if not matches:
+        return []
+
+    plans: list[DayPlan] = []
+    for day_num, content in matches[:days]:
+        # Extract first line as title
+        lines = [line.strip() for line in content.strip().split("\n") if line.strip()]
+        title = lines[0] if lines else f"Day {day_num}: Explore {destination}"
+        # Remove markdown formatting from title
+        title = _re.sub(r"[*#_`]", "", title).strip()
+
+        plans.append(
+            DayPlan(
+                title=title,
+                activities=[],
+                meals=[],
+                accommodation={"hotel": ""},
+                estimated_cost_inr=0,
+                tips=[lines[1]] if len(lines) > 1 else [],
+            )
+        )
+
+    return plans
+
+
 def _extract_json_array(text: str) -> str:
-    """Extract JSON array from LLM response, stripping any markdown."""
+    """Extract JSON array from LLM response, stripping any markdown.
+
+    Handles truncated JSON by attempting to close open brackets/braces
+    when the response was cut off (finish_reason='length').
+    """
     text = text.strip()
+
+    # Try 1: Direct parse (LLM returned clean JSON)
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return text
+    except json.JSONDecodeError:
+        pass
+
+    # Try 2: Strip markdown code fences
     match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
     if match:
-        return match.group(1).strip()
-    match = re.search(r"\[[\s\S]+\]", text)
+        candidate = match.group(1).strip()
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+
+    # Try 3: Find the outermost JSON array [...]
+    match = re.search(r"(\[[\s\S]*)", text)
     if match:
-        return match.group(0)
+        extracted = match.group(0)
+        # Try parsing as-is first
+        try:
+            json.loads(extracted)
+            return extracted
+        except json.JSONDecodeError:
+            pass
+
+        # Attempt to fix truncated JSON by closing open structures
+        try:
+            # Find the last complete object
+            last_complete = extracted.rfind("}")
+            if last_complete > 0:
+                truncated = extracted[: last_complete + 1]
+                # Count unclosed brackets
+                open_brackets = truncated.count("[") - truncated.count("]")
+                open_braces = truncated.count("{") - truncated.count("}")
+                truncated += "]" * max(0, open_brackets)
+                truncated += "}" * max(0, open_braces)
+                json.loads(truncated)  # validate
+                return truncated
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Try removing trailing comma before closing bracket
+        try:
+            cleaned = re.sub(r",\s*([}\]])", r"\1", extracted)
+            open_brackets = cleaned.count("[") - cleaned.count("]")
+            open_braces = cleaned.count("{") - cleaned.count("}")
+            cleaned += "]" * max(0, open_brackets)
+            cleaned += "}" * max(0, open_braces)
+            json.loads(cleaned)
+            return cleaned
+        except (json.JSONDecodeError, ValueError):
+            pass
+
     return text

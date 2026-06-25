@@ -34,11 +34,19 @@ export default function LoginPage() {
 
     try {
       const BASE_URL = getBaseUrl();
-      const response = await fetch(`${BASE_URL}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+      } catch (networkErr: any) {
+        // Network error = backend not reachable
+        throw new Error(
+          "Cannot connect to the server. Please make sure the backend is running on port 8000 and try again."
+        );
+      }
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -46,29 +54,43 @@ export default function LoginPage() {
         if (Array.isArray(detail)) {
           throw new Error(detail.map((d: any) => d.msg).join(", "));
         }
-        throw new Error(typeof detail === "string" ? detail : "Invalid email or password");
+        if (response.status === 401) {
+          throw new Error(typeof detail === "string" ? detail : "Invalid email or password. Please check your credentials.");
+        }
+        if (response.status === 422) {
+          throw new Error(typeof detail === "string" ? detail : "Please enter a valid email address.");
+        }
+        throw new Error(typeof detail === "string" ? detail : `Server error (${response.status}). Please try again.`);
       }
 
       const data = await response.json();
       const accessToken = data.tokens?.access_token ?? data.access_token;
       const refreshToken = data.tokens?.refresh_token ?? data.refresh_token;
 
+      if (!accessToken) {
+        throw new Error("Login failed: No access token received. Please try again.");
+      }
+
       // Fetch user profile
       let user = data.user;
       if (!user) {
-        const profileRes = await fetch(`${BASE_URL}/api/v1/auth/me`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        user = profileRes.ok
-          ? await profileRes.json()
-          : { id: "1", email, name: "Traveler", role: "user" };
+        try {
+          const profileRes = await fetch(`${BASE_URL}/api/v1/auth/me`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          user = profileRes.ok
+            ? await profileRes.json()
+            : { id: "1", email, name: "Traveler", role: "user" };
+        } catch {
+          user = { id: "1", email, name: "Traveler", role: "user" };
+        }
       }
 
       setAuth(user, accessToken, refreshToken);
       router.push("/dashboard");
 
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred");
+      setError(err.message || "An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }

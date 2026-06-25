@@ -64,6 +64,7 @@ class HotelOptionResponse(BaseModel):
     price_per_night_inr: int
     rating: float
     location: str
+    type: str | None = None
     amenities: list[str]
     booking_url: str | None = None
     source: str
@@ -155,3 +156,4 @@ class TripStatusResponse(BaseModel):
     # BUG-01 fix: these were returned by the service but missing from schema
     approval_id: str | None = None
     has_result: bool = False
+    error: str | None = None  # Error details when status="failed"

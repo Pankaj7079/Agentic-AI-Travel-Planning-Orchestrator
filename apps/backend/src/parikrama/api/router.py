@@ -44,4 +44,3 @@ api_router.include_router(voice.router, prefix="/v1")
 
 # Phase 7 — Krama AI Chatbot Assistant
 api_router.include_router(chat.router, prefix="/v1")
-

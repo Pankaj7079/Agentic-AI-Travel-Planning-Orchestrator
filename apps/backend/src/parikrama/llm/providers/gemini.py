@@ -24,6 +24,10 @@ logger = structlog.get_logger(__name__)
 class GeminiProvider:
     """Async Gemini 2.5 Flash Lite provider."""
 
+    # Minimum gap between consecutive calls (rate limit protection)
+    _min_call_gap_seconds: float = 3.0
+    _last_call_time: float = 0.0
+
     def __init__(
         self,
         api_key: str,
@@ -67,7 +71,16 @@ class GeminiProvider:
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
         config = self._genai.GenerationConfig(temperature=temperature)
 
+        # Rate limit: enforce minimum gap between consecutive calls
+        now = time.monotonic()
+        elapsed = now - GeminiProvider._last_call_time
+        if elapsed < GeminiProvider._min_call_gap_seconds:
+            wait = GeminiProvider._min_call_gap_seconds - elapsed
+            logger.debug("gemini_rate_limit_wait", wait_ms=int(wait * 1000))
+            await asyncio.sleep(wait)
+
         start = time.monotonic()
+        GeminiProvider._last_call_time = start
         try:
             response = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(

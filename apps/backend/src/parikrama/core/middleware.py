@@ -55,18 +55,17 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
 
         status = response.status_code
-        log_ctx = dict(
-            layer="API",
-            method=request.method,
-            path=request.url.path,
-            status=status,
-            duration_ms=duration_ms,
-            client=request.client.host if request.client else "unknown",
-        )
+        log_ctx = {
+            "layer": "API",
+            "method": request.method,
+            "path": request.url.path,
+            "status": status,
+            "duration_ms": duration_ms,
+            "client": request.client.host if request.client else "unknown",
+        }
 
         if status >= 500:
-            logger.error("http_request", **log_ctx,
-                         hint="Check errors.log for full traceback")
+            logger.error("http_request", **log_ctx, hint="Check errors.log for full traceback")
         elif status >= 400:
             logger.warning("http_request", **log_ctx)
         elif request.method != "OPTIONS":

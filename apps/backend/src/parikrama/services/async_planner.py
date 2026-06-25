@@ -8,23 +8,26 @@ This allows the /plan endpoint to return immediately (202 Accepted)
 while planning continues in the background. Status is polled via
 GET /trips/{id}/status or received via WebSocket.
 """
+
 from __future__ import annotations
 
-import asyncio
+import contextlib
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from sqlalchemy import select
 
 from parikrama.agents.trip_graph import build_trip_planning_graph
-from parikrama.agents.trip_state import TripPlanningState
 from parikrama.api.websocket.manager import ws_manager
 from parikrama.db.session import async_session_factory
 from parikrama.models.trip import AgentRun, Trip
 from parikrama.models.user import User
+
+if TYPE_CHECKING:
+    from parikrama.agents.trip_state import TripPlanningState
 
 logger = structlog.get_logger(__name__)
 
@@ -99,6 +102,8 @@ async def run_planning_background(
                 "status": "planning",
                 "approval_response": None,
                 "_budget_retries": 0,
+                "selected_hotel": None,
+                "selected_transport": None,
             }
 
             # ── 3. Build and run the LangGraph pipeline ───────────────────
@@ -113,6 +118,8 @@ async def run_planning_background(
                 final_state = await graph.ainvoke(initial_state)
             except Exception as exc:
                 log.error("background_pipeline_failed", error=str(exc))
+                with contextlib.suppress(Exception):
+                    await db.rollback()
                 trip.status = "failed"
                 trip.result = {"error": str(exc), "errors": [str(exc)]}
                 await db.commit()
@@ -127,103 +134,9 @@ async def run_planning_background(
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
 
-            # ── 4. Handle HITL approval gate ─────────────────────────────
-            if final_state.get("requires_approval", False):
-                trip.status = "awaiting_approval"
-                trip.result = {
-                    "request": final_state.get("request", {}),
-                    "hotel_options": final_state.get("hotel_options", []),
-                    "transport_options": final_state.get("transport_options", []),
-                    "weather": final_state.get("weather"),
-                    "places_of_interest": final_state.get("places_of_interest", []),
-                    "destination_info": final_state.get("destination_info", ""),
-                    "reviews_summary": final_state.get("reviews_summary", ""),
-                }
-                await db.commit()
-
-                # Create approval record
-                user_result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
-                user = user_result.scalar_one_or_none()
-                if user:
-                    from parikrama.services.approval_service import ApprovalService
-
-                    approval_svc = ApprovalService(db)
-                    hotels = final_state.get("hotel_options", [])
-                    budget = (final_state.get("request") or {}).get("budget_inr", 0)
-                    top_hotel = hotels[0] if hotels else {}
-                    approval_id = await approval_svc.create_approval(
-                        trip_id=trip_id,
-                        user=user,
-                        approval_type="hotel_booking",
-                        title="Approval needed: Hotel exceeds 50% of your budget",
-                        description=(
-                            f"{top_hotel.get('name', 'Selected hotel')} costs "
-                            f"₹{top_hotel.get('price_per_night_inr', 0):,}/night. "
-                            f"Your total budget is ₹{budget:,}. Approve to continue planning."
-                        ),
-                        payload={
-                            "hotel_options": hotels[:3],
-                            "transport_options": final_state.get("transport_options", [])[:3],
-                            "budget_inr": budget,
-                        },
-                    )
-                    await db.commit()
-
-                    # Broadcast approval request
-                    await ws_manager.broadcast_approval_request(
-                        user_id=user_id,
-                        approval_id=approval_id,
-                        title="Approval needed",
-                        description=f"Hotel exceeds budget. Top option: {top_hotel.get('name', 'N/A')} at ₹{top_hotel.get('price_per_night_inr', 0):,}/night",
-                        payload={"hotel_options": hotels[:3]},
-                    )
-
-                log.info("background_awaiting_approval", trip_id=trip_id)
-                return
-
-            # ── 5. Persist agent run records ──────────────────────────────
-            await _persist_agent_runs(db, trip_id, final_state, duration_ms)
-
-            # ── 6. Update trip with completed results ─────────────────────
-            # Update the trip request with the parsed structured data from LLM
-            parsed_request = final_state.get("request", {})
-            trip.request = {
-                **(trip.request or {}),
-                **parsed_request,
-                "raw_input": raw_input,
-            }
-            trip.status = final_state.get("status", "completed")
-            trip.result = {
-                "itinerary": final_state.get("itinerary", []),
-                "budget_breakdown": final_state.get("budget_breakdown"),
-                "summary": final_state.get("summary", ""),
-                "hotel_options": final_state.get("hotel_options", []),
-                "transport_options": final_state.get("transport_options", []),
-                "request": parsed_request,
-                "weather": final_state.get("weather"),
-                "places_of_interest": final_state.get("places_of_interest", []),
-                "errors": final_state.get("errors", []),
-            }
-            trip.planning_duration_ms = duration_ms
-            trip.completed_at = datetime.now(tz=UTC)
-            await db.commit()
-
-            # ── 7. Notify completion ──────────────────────────────────────
-            await ws_manager.broadcast_trip_completed(
-                user_id=user_id,
-                trip_id=trip_id,
-            )
-            log.info(
-                "background_planning_completed",
-                duration_ms=duration_ms,
-                itinerary_days=len(final_state.get("itinerary", [])),
-                errors=len(final_state.get("errors", [])),
-            )
-
         except Exception as exc:
             log.error("background_planning_unexpected_error", error=str(exc))
             try:
-                # Try to mark trip as failed
                 async with async_session_factory() as recovery_db:
                     result = await recovery_db.execute(
                         select(Trip).where(Trip.id == uuid.UUID(trip_id))
@@ -234,7 +147,171 @@ async def run_planning_background(
                         trip.result = {"error": str(exc)}
                         await recovery_db.commit()
             except Exception:
-                pass  # Nothing more we can do
+                pass
+            return
+
+    # ── 4-7. Post-pipeline persistence (FRESH session) ──────────────────
+    # ALL DB operations after the graph completes use a fresh session.
+    # The session used by LangGraph is in a corrupted state after the
+    # graph finishes (greenlet context issues with RAG/direct queries).
+    try:
+        if final_state.get("requires_approval", False):
+            await _handle_approval(
+                trip_id=trip_id,
+                user_id=user_id,
+                final_state=final_state,
+            )
+        else:
+            await _persist_results(
+                trip_id=trip_id,
+                user_id=user_id,
+                raw_input=raw_input,
+                final_state=final_state,
+                duration_ms=duration_ms,
+            )
+    except Exception as exc:
+        log.error("post_pipeline_persistence_failed", error=str(exc))
+        try:
+            async with async_session_factory() as recovery_db:
+                result = await recovery_db.execute(
+                    select(Trip).where(Trip.id == uuid.UUID(trip_id))
+                )
+                trip_rec = result.scalar_one_or_none()
+                if trip_rec:
+                    trip_rec.status = "failed"
+                    trip_rec.result = {"error": f"Pipeline completed but saving failed: {exc}"}
+                    await recovery_db.commit()
+        except Exception:
+            pass
+
+
+async def _persist_results(
+    trip_id: str,
+    user_id: str,
+    raw_input: str,
+    final_state: TripPlanningState,
+    duration_ms: int,
+) -> None:
+    """Persist pipeline results using a fresh DB session."""
+    log = logger.bind(trip_id=trip_id)
+
+    async with async_session_factory() as save_db:
+        # ── 5. Persist agent run records ──────────────────────────────
+        await _persist_agent_runs(save_db, trip_id, final_state, duration_ms)
+
+        # ── 6. Update trip with completed results ─────────────────────
+        result = await save_db.execute(select(Trip).where(Trip.id == uuid.UUID(trip_id)))
+        trip = result.scalar_one_or_none()
+        if not trip:
+            log.error("persist_trip_not_found")
+            return
+
+        parsed_request = final_state.get("request", {})
+        trip.request = {
+            **(trip.request or {}),
+            **parsed_request,
+            "raw_input": raw_input,
+        }
+        trip.status = final_state.get("status", "completed")
+        trip.result = {
+            "itinerary": final_state.get("itinerary", []),
+            "budget_breakdown": final_state.get("budget_breakdown"),
+            "summary": final_state.get("summary", ""),
+            "hotel_options": final_state.get("hotel_options", []),
+            "transport_options": final_state.get("transport_options", []),
+            "request": parsed_request,
+            "weather": final_state.get("weather"),
+            "places_of_interest": final_state.get("places_of_interest", []),
+            "errors": final_state.get("errors", []),
+        }
+        trip.planning_duration_ms = duration_ms
+        trip.completed_at = datetime.now(tz=UTC)
+        await save_db.commit()
+
+        # ── 7. Notify completion ──────────────────────────────────────
+        await ws_manager.broadcast_trip_completed(
+            user_id=user_id,
+            trip_id=trip_id,
+        )
+        log.info(
+            "background_planning_completed",
+            duration_ms=duration_ms,
+            itinerary_days=len(final_state.get("itinerary", [])),
+            errors=len(final_state.get("errors", [])),
+        )
+
+
+async def _handle_approval(
+    trip_id: str,
+    user_id: str,
+    final_state: TripPlanningState,
+) -> None:
+    """Handle HITL approval gate using a fresh DB session."""
+    log = logger.bind(trip_id=trip_id)
+
+    async with async_session_factory() as db:
+        # Update trip status
+        result = await db.execute(select(Trip).where(Trip.id == uuid.UUID(trip_id)))
+        trip = result.scalar_one_or_none()
+        if not trip:
+            log.error("approval_trip_not_found")
+            return
+
+        trip.status = "awaiting_approval"
+        trip.result = {
+            "request": final_state.get("request", {}),
+            "hotel_options": final_state.get("hotel_options", []),
+            "transport_options": final_state.get("transport_options", []),
+            "weather": final_state.get("weather"),
+            "places_of_interest": final_state.get("places_of_interest", []),
+            "destination_info": final_state.get("destination_info", ""),
+            "reviews_summary": final_state.get("reviews_summary", ""),
+        }
+        await db.commit()
+
+        # Fetch user
+        user_result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+        user = user_result.scalar_one_or_none()
+        if not user:
+            log.error("approval_user_not_found")
+            return
+
+        from parikrama.services.approval_service import ApprovalService
+
+        approval_svc = ApprovalService(db)
+        hotels = final_state.get("hotel_options", [])
+        budget = (final_state.get("request") or {}).get("budget_inr", 0)
+        top_hotel = hotels[0] if hotels else {}
+        approval_id = await approval_svc.create_approval(
+            trip_id=trip_id,
+            user=user,
+            approval_type="hotel_booking",
+            title="Approval needed: Hotel exceeds 50% of your budget",
+            description=(
+                f"{top_hotel.get('name', 'Selected hotel')} costs "
+                f"Rs {top_hotel.get('price_per_night_inr', 0):,}/night. "
+                f"Your total budget is Rs {budget:,}. Approve to continue planning."
+            ),
+            payload={
+                "hotel_options": hotels[:3],
+                "transport_options": final_state.get("transport_options", [])[:3],
+                "budget_inr": budget,
+            },
+        )
+        await db.commit()
+
+        await ws_manager.broadcast_approval_request(
+            user_id=user_id,
+            approval_id=approval_id,
+            title="Approval needed",
+            description=(
+                f"Hotel exceeds budget. Top option: {top_hotel.get('name', 'N/A')} "
+                f"at Rs {top_hotel.get('price_per_night_inr', 0):,}/night"
+            ),
+            payload={"hotel_options": hotels[:3]},
+        )
+
+    log.info("background_awaiting_approval", trip_id=trip_id)
 
 
 async def _persist_agent_runs(

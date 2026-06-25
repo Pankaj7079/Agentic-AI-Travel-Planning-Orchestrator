@@ -46,6 +46,13 @@ dev = [
 target-version = "py312"
 line-length = 100
 src = ["apps/*/src", "packages/*/src"]
+exclude = [
+    "apps/backend/src/parikrama/test_firebase.py",
+    "apps/backend/src/parikrama/test_gemini.py",
+    "apps/backend/src/parikrama/test_llm.py",
+    "apps/backend/src/parikrama/test_three_keys.py",
+    "apps/backend/alembic/versions/*",
+]
 
 [tool.ruff.lint]
 select = [

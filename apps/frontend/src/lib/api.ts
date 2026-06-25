@@ -19,22 +19,26 @@ class ApiClient {
     return headers;
   }
 
-  async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${BASE_URL}${path}`, {
-      ...options,
-      headers: { ...this.getHeaders(), ...options.headers },
-    });
+  async request<T>(path: string, options: RequestInit = {}, _retried = false): Promise<T> {
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}${path}`, {
+        ...options,
+        headers: { ...this.getHeaders(), ...options.headers },
+      });
+    } catch {
+      throw new Error("Cannot connect to the server. Please check your connection or make sure the backend is running.");
+    }
 
-    // handle token expiration
-    if (response.status === 401) {
+    // Handle token expiration — only retry ONCE to avoid infinite loop
+    if (response.status === 401 && !_retried) {
       const refreshed = await this.refreshToken();
       if (refreshed) {
-        return this.request(path, options); // retry with new token
+        return this.request(path, options, true); // retry once with new token
       }
+      // Refresh failed — log out
       useAuthStore.getState().logout();
-      if (typeof window !== "undefined") {
-        window.location.href = "/login";
-      }
+      throw new Error("Session expired. Please sign in again.");
     }
 
     if (!response.ok) {

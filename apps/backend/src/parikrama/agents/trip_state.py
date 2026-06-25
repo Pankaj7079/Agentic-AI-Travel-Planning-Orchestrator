@@ -21,13 +21,13 @@ from typing import Annotated, Any, TypedDict
 class TripRequest(TypedDict, total=False):
     """Structured trip request extracted by the OrchestratorAgent from raw user input."""
 
-    origin: str          # Starting city (e.g., "Delhi")
-    destination: str     # Target destination (e.g., "Manali")
-    days: int            # Trip duration in days (1-30)
-    budget_inr: float    # Total budget in Indian Rupees
-    travelers: int       # Number of travelers (default: 1)
+    origin: str  # Starting city (e.g., "Delhi")
+    destination: str  # Target destination (e.g., "Manali")
+    days: int  # Trip duration in days (1-30)
+    budget_inr: float  # Total budget in Indian Rupees
+    travelers: int  # Number of travelers (default: 1)
     preferences: dict[str, Any]  # {interests, food, style}
-    language: str        # Detected language: "en", "hi", "hinglish"
+    language: str  # Detected language: "en", "hi", "hinglish"
 
 
 class HotelOption(TypedDict, total=False):
@@ -37,6 +37,7 @@ class HotelOption(TypedDict, total=False):
     location: str
     price_per_night_inr: float
     rating: float
+    type: str
     amenities: list[str]
     booking_url: str
 
@@ -44,7 +45,7 @@ class HotelOption(TypedDict, total=False):
 class TransportOption(TypedDict, total=False):
     """A single transport search result."""
 
-    type: str            # "bus", "train", "flight"
+    type: str  # "bus", "train", "flight"
     operator: str
     origin: str
     destination: str
@@ -111,35 +112,37 @@ class TripPlanningState(TypedDict, total=False):
     """
 
     # ── Input ────────────────────────────────────────────────────────────────
-    trip_id: str          # UUID of the Trip DB record
-    user_id: str          # UUID of the authenticated user
-    raw_input: str        # Original natural language request
+    trip_id: str  # UUID of the Trip DB record
+    user_id: str  # UUID of the authenticated user
+    raw_input: str  # Original natural language request
 
     # ── Orchestrator outputs ─────────────────────────────────────────────────
     request: TripRequest  # Parsed structured trip request
 
     # ── Research Agent outputs (parallel node 1) ──────────────────────────────
-    weather: dict[str, Any] | None        # Weather forecast + advisory
-    destination_info: str                 # RAG-retrieved travel knowledge
+    weather: dict[str, Any] | None  # Weather forecast + advisory
+    destination_info: str  # RAG-retrieved travel knowledge
     places_of_interest: list[dict[str, Any]]  # Top places to visit
-    reviews_summary: str                  # LLM-synthesized research brief
+    reviews_summary: str  # LLM-synthesized research brief
 
     # ── Booking Agent outputs (parallel node 2) ───────────────────────────────
-    hotel_options: list[HotelOption]      # Ranked hotel options
+    hotel_options: list[HotelOption]  # Ranked hotel options
     transport_options: list[TransportOption]  # Ranked transport options
-    requires_approval: bool               # True if any item > 50% of budget
+    requires_approval: bool  # True if any item > 50% of budget
+    selected_hotel: HotelOption | None  # User-selected hotel (for future HITL)
+    selected_transport: TransportOption | None  # User-selected transport (for future HITL)
 
     # ── Budget Optimizer outputs ─────────────────────────────────────────────
     budget_breakdown: BudgetBreakdown | None
     is_within_budget: bool
 
     # ── Final Itinerary outputs ──────────────────────────────────────────────
-    itinerary: list[DayPlan]   # Day-by-day plan
-    summary: str               # One-paragraph trip summary
+    itinerary: list[DayPlan]  # Day-by-day plan
+    summary: str  # One-paragraph trip summary
 
     # ── Pipeline control ─────────────────────────────────────────────────────
     current_agent: Annotated[str, update_current_agent]  # Name of the currently running agent
-    status: str           # "planning" | "completed" | "failed" | "awaiting_approval"
+    status: str  # "planning" | "completed" | "failed" | "awaiting_approval"
     approval_response: str | None  # Human approval decision (Phase 5)
 
     # ── Annotated fields merged by LangGraph from parallel nodes ─────────────

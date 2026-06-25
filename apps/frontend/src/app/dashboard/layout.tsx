@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import {
   Compass, Map, Settings, Bell, User, LogOut,
   PlaneTakeoff, ChevronRight, BarChart3, X, Menu
@@ -18,9 +18,29 @@ const NAV = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
+  const router = useRouter();
+  const { user, logout, isAuthenticated } = useAuthStore();
   const { unreadCount } = useNotificationStore();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Auth guard — redirect to login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [isAuthenticated, router]);
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex gap-2 items-center text-muted-foreground">
+          <span className="typing-dot h-2 w-2 rounded-full bg-primary" />
+          <span className="typing-dot h-2 w-2 rounded-full bg-primary" />
+          <span className="typing-dot h-2 w-2 rounded-full bg-primary" />
+        </div>
+      </div>
+    );
+  }
 
   const isActive = (nav: typeof NAV[0]) => {
     if (nav.exact) return pathname === nav.href;

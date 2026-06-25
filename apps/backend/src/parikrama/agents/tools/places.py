@@ -287,6 +287,12 @@ async def _search_google_places(destination: str, max_results: int, api_key: str
         resp.raise_for_status()
         data = resp.json()
 
+    api_status = data.get("status")
+    if api_status not in ("OK", "ZERO_RESULTS"):
+        raise ValueError(
+            f"Google Places API error: {api_status} - {data.get('error_message', 'Unknown error')}"
+        )
+
     places = []
     for item in data.get("results", [])[:max_results]:
         places.append(

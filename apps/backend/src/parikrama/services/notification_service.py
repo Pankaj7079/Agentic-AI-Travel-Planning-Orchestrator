@@ -77,16 +77,19 @@ class NotificationService:
             channels_sent.append("websocket")
 
         # ── Channel 2: Email via Resend or SMTP ──────────────────────────────
+        # Email is best-effort — failures are non-critical since WebSocket delivery
+        # already succeeded. Log as warning, not error, to avoid noise in logs.
         if user.email_notifications:
             if settings.RESEND_API_KEY:
                 try:
                     await self._send_email(user.email, title, body, extra)
                     channels_sent.append("email")
                 except Exception as exc:
-                    logger.error(
-                        "email_notification_failed_resend",
+                    logger.warning(
+                        "email_notification_skipped",
                         user_id=str(user.id),
-                        error=str(exc)[:200],
+                        provider="resend",
+                        error=str(exc)[:120],
                     )
             elif settings.SMTP_HOST:
                 try:
@@ -173,10 +176,13 @@ class NotificationService:
         )
         logger.info("email_sent", to=to_email, title=title)
 
-    async def _send_email_smtp(self, to_email: str, title: str, body: str, data: dict[str, Any]) -> None:
+    async def _send_email_smtp(
+        self, to_email: str, title: str, body: str, data: dict[str, Any]
+    ) -> None:
         """Send email notification via open-source SMTP (Nodemailer style)."""
-        import aiosmtplib
         from email.message import EmailMessage
+
+        import aiosmtplib
 
         action_url = data.get("action_url", "")
         action_html = (
