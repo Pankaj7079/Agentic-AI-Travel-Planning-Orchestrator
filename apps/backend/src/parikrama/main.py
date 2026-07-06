@@ -2,13 +2,16 @@
 PariKrama — FastAPI application factory.
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import sentry_sdk
 import structlog
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 try:
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -26,6 +29,38 @@ from parikrama.db.session import engine
 
 logger = structlog.get_logger()
 
+ALEMBIC_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+async def _check_and_recover_db() -> None:
+    """Check if core tables exist; if not, auto-run alembic migration."""
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = 'users'")
+            )
+            if result.scalar():
+                return
+    except Exception:
+        return
+
+    logger.warning("database_tables_missing", msg="Auto-recovering database tables...")
+
+    def _run_alembic():
+        import alembic.command
+        import alembic.config
+
+        cfg = alembic.config.Config(str(ALEMBIC_DIR / "alembic.ini"))
+        cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+        alembic.command.stamp(cfg, "base")
+        alembic.command.upgrade(cfg, "head")
+
+    try:
+        await asyncio.to_thread(_run_alembic)
+        logger.info("database_tables_recovered", msg="All tables recreated successfully")
+    except Exception as e:
+        logger.error("database_recovery_failed", error=str(e))
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
@@ -39,6 +74,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
             environment=settings.APP_ENV,
         )
+
+    await _check_and_recover_db()
 
     yield
 
@@ -55,6 +92,7 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.DEBUG else None,
         redoc_url="/redoc" if settings.DEBUG else None,
         lifespan=lifespan,
+        redirect_slashes=False,
     )
 
     app.add_middleware(

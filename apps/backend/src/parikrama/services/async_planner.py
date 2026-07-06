@@ -36,6 +36,7 @@ async def run_planning_background(
     trip_id: str,
     user_id: str,
     raw_input: str,
+    approval_response: dict | None = None,
 ) -> None:
     """
     Execute the LangGraph planning pipeline in the background.
@@ -48,6 +49,7 @@ async def run_planning_background(
         trip_id: UUID of the existing Trip record.
         user_id: UUID of the authenticated user.
         raw_input: Natural language trip request.
+        approval_response: Optional approval context from HITL gate (resumes without re-approval).
     """
     log = logger.bind(trip_id=trip_id, user_id=user_id)
     log.info("background_planning_started", raw_input=raw_input[:80])
@@ -100,7 +102,7 @@ async def run_planning_background(
                 "messages": [],
                 "errors": [],
                 "status": "planning",
-                "approval_response": None,
+                "approval_response": str(approval_response) if approval_response else None,
                 "_budget_retries": 0,
                 "selected_hotel": None,
                 "selected_transport": None,

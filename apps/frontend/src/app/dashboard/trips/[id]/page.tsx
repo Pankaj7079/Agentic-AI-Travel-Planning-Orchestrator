@@ -8,6 +8,7 @@ import {
   AlertCircle, Loader2, TrendingUp, Star
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/stores/authStore";
 
 interface TripDetail {
   id: string;
@@ -427,22 +428,49 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass border border-white/10 hover:border-primary/20 text-sm font-medium transition-all"
               onClick={async () => {
                 try {
-                  const res = await api.request<any>(`/api/v1/trips/${id}/export/pdf`, { headers: { Accept: "application/pdf" } });
-                  const url = URL.createObjectURL(res);
-                  const a = document.createElement("a"); a.href = url; a.download = `trip-${id.slice(0,8)}.pdf`; a.click();
-                } catch { alert("PDF export not available yet."); }
+                  const res = await fetch(`http://localhost:8000/api/v1/trips/${id}/export/pdf`, {
+                    headers: { Authorization: `Bearer ${useAuthStore.getState().accessToken || ""}` },
+                  });
+                  if (!res.ok) throw new Error("Export failed");
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `trip-${(trip.request?.destination || id.slice(0, 8)).replace(/\s+/g, "-")}.html`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                } catch (err: any) {
+                  alert(err?.message || "PDF export not available yet.");
+                }
               }}
             >
-              <Download className="h-4 w-4" /> Download PDF
+              <Download className="h-4 w-4" /> Download Itinerary
             </button>
             <button
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass border border-white/10 hover:border-primary/20 text-sm font-medium transition-all"
               onClick={async () => {
-                await navigator.clipboard.writeText(window.location.href);
-                alert("Link copied to clipboard!");
+                try {
+                  const shareUrl = `${window.location.origin}/dashboard/trips/${id}`;
+                  await navigator.clipboard.writeText(shareUrl);
+                  const btn = document.activeElement as HTMLButtonElement;
+                  const original = btn.innerHTML;
+                  btn.innerHTML = '<svg class="h-4 w-4 inline mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Copied!';
+                  setTimeout(() => { btn.innerHTML = original; }, 2000);
+                } catch {
+                  const shareUrl = `${window.location.origin}/dashboard/trips/${id}`;
+                  prompt("Copy this link:", shareUrl);
+                }
               }}
             >
               <Share2 className="h-4 w-4" /> Share Link
+            </button>
+            <button
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass border border-white/10 hover:border-primary/20 text-sm font-medium transition-all"
+              onClick={() => window.print()}
+            >
+              <ExternalLink className="h-4 w-4" /> Print
             </button>
           </div>
         </>

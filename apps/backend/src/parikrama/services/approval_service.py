@@ -307,13 +307,41 @@ class ApprovalService:
         # own DB session, so it is fully decoupled from this request's session.
         import asyncio
 
-        _resume_task = asyncio.create_task(
-            run_planning_background(
-                trip_id=trip_id,
-                user_id=user_id,
-                raw_input=raw_input,
-            )
-        )
+        async def _safe_resume() -> None:
+            """Wrapper that catches and logs any errors from the resumed pipeline."""
+            try:
+                await run_planning_background(
+                    trip_id=trip_id,
+                    user_id=user_id,
+                    raw_input=raw_input,
+                    approval_response=approval_response,
+                )
+            except Exception as exc:
+                logger.error(
+                    "pipeline_resume_failed",
+                    trip_id=trip_id,
+                    error=str(exc),
+                    exc_info=True,
+                )
+                # Mark trip as failed so user sees the error
+                try:
+                    from parikrama.db.session import async_session_factory
+
+                    async with async_session_factory() as err_db:
+                        from sqlalchemy import select as sa_select
+
+                        res = await err_db.execute(
+                            sa_select(Trip).where(Trip.id == uuid.UUID(trip_id))
+                        )
+                        trip_rec = res.scalar_one_or_none()
+                        if trip_rec:
+                            trip_rec.status = "failed"
+                            trip_rec.result = {"error": f"Pipeline resume failed: {exc}"}
+                            await err_db.commit()
+                except Exception:
+                    pass
+
+        _resume_task = asyncio.create_task(_safe_resume())
         logger.info("pipeline_resume_dispatched", trip_id=trip_id, task_id=id(_resume_task))
 
     @staticmethod

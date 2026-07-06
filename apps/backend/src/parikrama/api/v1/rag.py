@@ -2,6 +2,7 @@
 RAG search API routes.
 
 Endpoints:
+    GET  /api/v1/rag/stats             Knowledge base statistics
     POST /api/v1/rag/search            Full hybrid search (semantic + BM25 + reranker)
     POST /api/v1/rag/search/semantic   Semantic-only search
     POST /api/v1/rag/search/keyword    Keyword-only search
@@ -13,9 +14,11 @@ from typing import TYPE_CHECKING
 
 import structlog
 from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
 
 from parikrama.core.security import get_current_user_id
 from parikrama.db.session import get_db
+from parikrama.models.document import Document, DocumentChunk
 from parikrama.schemas.rag import SearchRequest, SearchResponse
 from parikrama.services.rag_service import RAGService
 
@@ -24,6 +27,25 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/rag", tags=["RAG Search"])
+
+
+@router.get(
+    "/stats",
+    summary="Knowledge base statistics",
+)
+async def rag_stats(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """Return statistics about the uploaded knowledge base."""
+    doc_count = await db.execute(select(func.count()).select_from(Document))
+    chunk_count = await db.execute(select(func.count()).select_from(DocumentChunk))
+
+    return {
+        "total_documents": doc_count.scalar_one() or 0,
+        "total_chunks": chunk_count.scalar_one() or 0,
+        "status": "ok",
+    }
 
 
 @router.post(

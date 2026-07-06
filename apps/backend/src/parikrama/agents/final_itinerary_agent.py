@@ -38,6 +38,13 @@ For EACH day, include:
 - estimated_cost_inr: total estimated spend for the day
 - tips: list of practical tips for the day
 
+CRITICAL RULES:
+- If the trip covers MULTIPLE cities, use DIFFERENT hotels for each city (match hotel location to the city you're staying in that night)
+- If staying in the SAME city, use the SAME hotel for all nights (check-in Day 1, check-out last day)
+- Match activities to the actual places of interest provided in the data
+- Include realistic travel times between locations
+- Budget must add up to the total budget provided
+
 Style guidelines:
 - Friendly, conversational tone — like advice from a seasoned Indian traveler
 - Include local food recommendations (specific dishes, dhaba vs restaurant)
@@ -183,12 +190,16 @@ def _compile_full_context(state: TripPlanningState) -> str:
 
     hotels = state.get("hotel_options", [])
     if hotels:
-        best_hotel = hotels[0]
-        parts.append(
-            f"\nRecommended Hotel: {best_hotel.get('name', 'N/A')} "
-            f"(₹{best_hotel.get('price_per_night_inr', 0):,.0f}/night, "
-            f"rating: {best_hotel.get('rating', 'N/A')})"
+        hotel_list = "\n".join(
+            [
+                f"  - {h.get('name', 'N/A')} ({h.get('type', 'hotel')}, "
+                f"₹{h.get('price_per_night_inr', 0):,.0f}/night, "
+                f"rating: {h.get('rating', 'N/A')}, "
+                f"location: {h.get('location', 'N/A')})"
+                for h in hotels[:5]
+            ]
         )
+        parts.append(f"\nHotel Options (choose the best fit for each night):\n{hotel_list}")
 
     transport = state.get("transport_options", [])
     if transport:

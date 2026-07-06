@@ -53,6 +53,7 @@ class GeminiProvider:
         prompt: str,
         system: str = "",
         temperature: float = 0.7,
+        max_tokens: int = 4096,
     ) -> LLMResponse:
         """Generate text from Gemini. Raises on timeout or API error.
 
@@ -60,6 +61,7 @@ class GeminiProvider:
             prompt: User message / query.
             system: Optional system-level instruction prepended to prompt.
             temperature: Sampling temperature (0.0 = deterministic).
+            max_tokens: Maximum output tokens (mapped to Gemini's max_output_tokens).
 
         Returns:
             LLMResponse with content, latency, and token counts.
@@ -69,7 +71,10 @@ class GeminiProvider:
             Exception: Propagated from the Gemini API on error.
         """
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
-        config = self._genai.GenerationConfig(temperature=temperature)
+        config = self._genai.GenerationConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
 
         # Rate limit: enforce minimum gap between consecutive calls
         now = time.monotonic()

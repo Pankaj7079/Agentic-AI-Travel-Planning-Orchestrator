@@ -107,12 +107,12 @@ class LLMRouter:
         if force_provider == LLMProvider.GROQ:
             return await self._call_groq(prompt, system, temperature, max_tokens)
         if force_provider == LLMProvider.GEMINI:
-            return await self._call_gemini_or_raise(prompt, system, temperature)
+            return await self._call_gemini_or_raise(prompt, system, temperature, max_tokens)
 
         # Normal routing: try Gemini → fallback to Groq
         if self._gemini and self._should_use_gemini():
             try:
-                return await self._call_gemini_with_timeout(prompt, system, temperature)
+                return await self._call_gemini_with_timeout(prompt, system, temperature, max_tokens)
             except Exception as exc:
                 logger.warning("gemini_failed_routing_to_groq", error=str(exc)[:120])
                 await self._record_gemini_error()
@@ -215,11 +215,11 @@ class LLMRouter:
     # ── Provider call helpers ───────────────────────────────────────────────
 
     async def _call_gemini_with_timeout(
-        self, prompt: str, system: str, temperature: float
+        self, prompt: str, system: str, temperature: float, max_tokens: int = 4096
     ) -> LLMResponse:
         """Call Gemini; raise if latency exceeds threshold."""
         assert self._gemini is not None
-        response = await self._gemini.generate(prompt, system, temperature)
+        response = await self._gemini.generate(prompt, system, temperature, max_tokens=max_tokens)
         if response.latency_ms > self._latency_threshold_ms:
             await self._record_gemini_error()
             raise TimeoutError(
@@ -230,11 +230,11 @@ class LLMRouter:
         return response
 
     async def _call_gemini_or_raise(
-        self, prompt: str, system: str, temperature: float
+        self, prompt: str, system: str, temperature: float, max_tokens: int = 4096
     ) -> LLMResponse:
         if not self._gemini:
             raise LLMUnavailableError("Gemini is not configured")
-        return await self._gemini.generate(prompt, system, temperature)
+        return await self._gemini.generate(prompt, system, temperature, max_tokens=max_tokens)
 
     async def _call_groq(
         self, prompt: str, system: str, temperature: float, max_tokens: int = 4096

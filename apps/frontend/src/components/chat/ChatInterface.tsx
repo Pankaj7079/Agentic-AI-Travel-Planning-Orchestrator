@@ -66,35 +66,17 @@ const WELCOME_SUGGESTIONS = [
 function extractTripHints(text: string): {
   origin: string; destination: string; days: number; budget_inr: number;
 } {
-  const t = text.toLowerCase().replace(/₹/g, "rs");
+  const t = text.toLowerCase();
   const daysMatch = t.match(/(\d+)[\s-]?(day|days|din|d\b)/);
   const days = daysMatch ? Math.min(30, Math.max(1, parseInt(daysMatch[1]))) : 7;
 
-  // Budget extraction: try currency-specific patterns first, then large standalone numbers
   let budget = 15000;
-  // Pattern 1: explicit currency marker (Rs/INR) followed by number with optional k/lakh
-  const currencyMatch = t.match(/(?:rs\.?|inr)\s*(\d[\d,]*)\s*(?:k(?:b|\b))?/i);
-  // Pattern 2: number followed by k/thousand/lakh/hazar
-  const kMatch = t.match(/(\d[\d,]*)\s*(?:thousand|k\b|hazar|lakh)/i);
-  // Pattern 3: number after "under/within/budget of" context words
-  const contextMatch = t.match(/(?:under|within|budget|upto|up to)\s+(?:rs\.?|inr)?\s*(\d[\d,]*)/i);
-
-  let rawStr: string | null = null;
-  let multiplier = 1;
-
-  if (contextMatch) {
-    rawStr = contextMatch[1];
-  } else if (currencyMatch) {
-    rawStr = currencyMatch[1];
-  } else if (kMatch) {
-    rawStr = kMatch[1];
-    multiplier = 1000;
-  }
-
-  if (rawStr) {
-    let raw = parseInt(rawStr.replace(/,/g, "")) * multiplier;
+  const budgetMatch = t.match(/(?:rs\.?|₹|inr)?\s*(\d[\d,]*)\s*(?:k|000|hazar|lakh)?/i);
+  if (budgetMatch) {
+    let raw = parseInt(budgetMatch[1].replace(/,/g, ""));
     if (t.includes("lakh") && raw < 100) raw *= 100000;
-    if (raw >= 500 && raw <= 10000000) budget = raw;
+    else if ((t.includes("k") || t.includes("hazar")) && raw < 1000) raw *= 1000;
+    if (raw >= 500) budget = raw;
   }
 
   const fromToMatch =

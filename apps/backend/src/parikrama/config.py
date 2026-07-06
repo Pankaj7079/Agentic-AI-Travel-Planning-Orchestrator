@@ -82,11 +82,11 @@ class Settings(BaseSettings):
     # -- LLM --
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
-    GEMINI_TIMEOUT_SECONDS: int = 30
+    GEMINI_TIMEOUT_SECONDS: int = 60
     GROQ_API_KEY: str = ""
     GROQ_PRIMARY_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_SECONDARY_MODEL: str = "llama3-8b-8192"
-    GROQ_TIMEOUT_SECONDS: int = 15
+    GROQ_TIMEOUT_SECONDS: int = 30
     LLM_FALLBACK_LATENCY_THRESHOLD_MS: int = 45000
     LLM_FALLBACK_ERROR_THRESHOLD: int = 3
     LLM_FALLBACK_ERROR_WINDOW_SECONDS: int = 60

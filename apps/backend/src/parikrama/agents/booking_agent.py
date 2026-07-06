@@ -35,7 +35,7 @@ logger = structlog.get_logger(__name__)
 
 async def booking_node(
     state: TripPlanningState,
-    llm_router: LLMRouter,  # accepted for interface consistency (unused)
+    llm_router: LLMRouter,
     db: AsyncSession,  # accepted for interface consistency (unused)
 ) -> TripPlanningState:
     """
@@ -76,12 +76,18 @@ async def booking_node(
 
     # ── Run hotel + transport search concurrently ─────────────────────────────
     hotels_result, transport_result = await asyncio.gather(
-        _search_hotels_safe(destination, days, hotel_budget_per_night, errors),
-        _search_transport_safe(origin, destination, transport_budget, errors),
+        _search_hotels_safe(destination, days, hotel_budget_per_night, errors, llm_router),
+        _search_transport_safe(origin, destination, transport_budget, errors, llm_router),
     )
 
     # ── Flag expensive items requiring approval ───────────────────────────────
-    requires_approval = _check_approval_needed(hotels_result, transport_result, total_budget, days)
+    # Skip approval check if pipeline was resumed after a previous approval
+    approval_response = state.get("approval_response")
+    if approval_response and "approved" in str(approval_response).lower():
+        requires_approval = False
+        log.info("approval_already_granted", trip_id=state.get("trip_id"))
+    else:
+        requires_approval = _check_approval_needed(hotels_result, transport_result, total_budget, days)
 
     # Only return NEW messages — LangGraph's operator.add reducer concatenates
     # them onto the existing list. Returning the full list causes duplication
@@ -137,10 +143,11 @@ async def _search_hotels_safe(
     nights: int,
     max_per_night: float,
     errors: list[str],
+    llm_router: LLMRouter | None = None,
 ) -> list[HotelOption]:
     """Search hotels with error capture. Returns exactly 3 options: budget, mid, premium."""
     try:
-        results = await search_hotels(destination, nights, max_per_night)
+        results = await search_hotels(destination, nights, max_per_night, llm_router=llm_router)
         hotels = [
             HotelOption(**{k: v for k, v in h.items() if k in HotelOption.__annotations__})
             for h in results
@@ -166,10 +173,11 @@ async def _search_transport_safe(
     destination: str,
     max_price: float,
     errors: list[str],
+    llm_router: LLMRouter | None = None,
 ) -> list[TransportOption]:
     """Search transport with error capture. Returns exactly 3 options: bus, train, flight (or cheapest 3)."""
     try:
-        results = await search_transport(origin, destination, max_price)
+        results = await search_transport(origin, destination, max_price, llm_router=llm_router)
         transport = [
             TransportOption(**{k: v for k, v in t.items() if k in TransportOption.__annotations__})
             for t in results
