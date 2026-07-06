@@ -10,6 +10,10 @@ const getBaseUrl = () => {
 const BASE_URL = getBaseUrl()
 
 class ApiClient {
+  getBaseUrl(): string {
+    return getBaseUrl();
+  }
+
   private getHeaders(): HeadersInit {
     const { accessToken } = useAuthStore.getState();
     const headers: HeadersInit = { "Content-Type": "application/json" };

@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Map, Calendar, DollarSign, Users, Plane,
   Hotel, Utensils, Compass, Clock, ChevronDown, ChevronUp,
   CheckCircle, Download, Share2, ExternalLink, Sparkles,
-  AlertCircle, Loader2, TrendingUp, Star
+  AlertCircle, Loader2, TrendingUp, Star, Copy, MessageCircle,
+  Mail, X, Printer, Check
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
@@ -64,6 +65,9 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<number | null>(0);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     async function loadTrip() {
@@ -425,10 +429,12 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
           {/* Export actions */}
           <div className="flex flex-wrap gap-3">
             <button
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass border border-white/10 hover:border-primary/20 text-sm font-medium transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass border border-white/10 hover:border-primary/20 text-sm font-medium transition-all disabled:opacity-50"
+              disabled={downloading}
               onClick={async () => {
+                setDownloading(true);
                 try {
-                  const res = await fetch(`http://localhost:8000/api/v1/trips/${id}/export/pdf`, {
+                  const res = await fetch(`${api.getBaseUrl()}/api/v1/trips/${id}/export/pdf`, {
                     headers: { Authorization: `Bearer ${useAuthStore.getState().accessToken || ""}` },
                   });
                   if (!res.ok) throw new Error("Export failed");
@@ -436,33 +442,23 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = `trip-${(trip.request?.destination || id.slice(0, 8)).replace(/\s+/g, "-")}.html`;
+                  a.download = `parikrama-${(trip.request?.destination || id.slice(0, 8)).replace(/\s+/g, "-").toLowerCase()}.html`;
                   document.body.appendChild(a);
                   a.click();
                   document.body.removeChild(a);
                   URL.revokeObjectURL(url);
                 } catch (err: any) {
-                  alert(err?.message || "PDF export not available yet.");
+                  alert(err?.message || "Download failed. Please try again.");
+                } finally {
+                  setDownloading(false);
                 }
               }}
             >
-              <Download className="h-4 w-4" /> Download Itinerary
+              <Download className="h-4 w-4" /> {downloading ? "Downloading..." : "Download Itinerary"}
             </button>
             <button
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass border border-white/10 hover:border-primary/20 text-sm font-medium transition-all"
-              onClick={async () => {
-                try {
-                  const shareUrl = `${window.location.origin}/dashboard/trips/${id}`;
-                  await navigator.clipboard.writeText(shareUrl);
-                  const btn = document.activeElement as HTMLButtonElement;
-                  const original = btn.innerHTML;
-                  btn.innerHTML = '<svg class="h-4 w-4 inline mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Copied!';
-                  setTimeout(() => { btn.innerHTML = original; }, 2000);
-                } catch {
-                  const shareUrl = `${window.location.origin}/dashboard/trips/${id}`;
-                  prompt("Copy this link:", shareUrl);
-                }
-              }}
+              onClick={() => setShowShareModal(true)}
             >
               <Share2 className="h-4 w-4" /> Share Link
             </button>
@@ -470,11 +466,276 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass border border-white/10 hover:border-primary/20 text-sm font-medium transition-all"
               onClick={() => window.print()}
             >
-              <ExternalLink className="h-4 w-4" /> Print
+              <Printer className="h-4 w-4" /> Print
             </button>
           </div>
+
+          {/* Share Modal */}
+          {showShareModal && (
+            <ShareModal
+              tripId={id}
+              trip={trip}
+              onClose={() => setShowShareModal(false)}
+            />
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+/* ── Share Modal Component ─────────────────────────────────────────────────── */
+
+function formatItineraryText(trip: TripDetail): string {
+  const req = trip.request || {};
+  const res = trip.result || {};
+  const lines: string[] = [];
+
+  lines.push(`${req.origin || ""} → ${req.destination || "Trip"}`);
+  lines.push(`${req.days || 0} days · ${req.travelers || 1} traveler(s) · ₹${(req.budget_inr || 0).toLocaleString("en-IN")} budget`);
+  lines.push("");
+
+  if (res.summary) {
+    lines.push(res.summary);
+    lines.push("");
+  }
+
+  if (res.budget_breakdown) {
+    const b = res.budget_breakdown;
+    lines.push("Budget Breakdown:");
+    lines.push(`  Transport: ₹${b.transport_inr.toLocaleString("en-IN")}`);
+    lines.push(`  Accommodation: ₹${b.accommodation_inr.toLocaleString("en-IN")}`);
+    lines.push(`  Food: ₹${b.food_inr.toLocaleString("en-IN")}`);
+    lines.push(`  Activities: ₹${b.activities_inr.toLocaleString("en-IN")}`);
+    lines.push(`  Misc: ₹${b.misc_inr.toLocaleString("en-IN")}`);
+    lines.push(`  Total: ₹${b.total_inr.toLocaleString("en-IN")}`);
+    lines.push("");
+  }
+
+  if (res.hotel_options?.length) {
+    lines.push("Hotels:");
+    res.hotel_options.slice(0, 3).forEach((h: any, i: number) => {
+      lines.push(`  ${i + 1}. ${h.name} — ₹${h.price_per_night_inr}/night (${h.type || "hotel"})`);
+    });
+    lines.push("");
+  }
+
+  if (res.transport_options?.length) {
+    lines.push("Transport:");
+    res.transport_options.slice(0, 3).forEach((t: any, i: number) => {
+      lines.push(`  ${i + 1}. ${t.type} — ${t.operator} — ₹${t.price_inr} (${t.duration_hours}h)`);
+    });
+    lines.push("");
+  }
+
+  if (res.itinerary?.length) {
+    lines.push("Itinerary:");
+    res.itinerary.forEach((day: any) => {
+      lines.push("");
+      lines.push(`Day ${day.day}: ${day.title}`);
+      if (day.activities?.length) {
+        day.activities.forEach((act: any) => {
+          const time = act.time ? `${act.time} — ` : "";
+          const cost = act.cost_inr > 0 ? ` (₹${act.cost_inr})` : "";
+          lines.push(`  • ${time}${act.activity || act.name || ""}${cost}`);
+          if (act.location) lines.push(`    📍 ${act.location}`);
+        });
+      }
+      if (day.meals?.length) {
+        day.meals.forEach((meal: any) => {
+          const cost = meal.estimated_cost_inr > 0 ? ` — ₹${meal.estimated_cost_inr}` : "";
+          lines.push(`  🍽️ ${meal.type}: ${meal.suggestion || meal.name || ""}${cost}`);
+        });
+      }
+      if (day.tips?.length) {
+        day.tips.forEach((tip: string) => lines.push(`  💡 ${tip}`));
+      }
+    });
+  }
+
+  lines.push("");
+  lines.push("Planned with PariKrama — AI Travel Planner");
+
+  return lines.join("\n");
+}
+
+function formatItineraryHtml(trip: TripDetail): string {
+  const req = trip.request || {};
+  const res = trip.result || {};
+  const dest = req.destination || "Trip";
+
+  let html = `<h2>${req.origin || ""} → ${dest}</h2>`;
+  html += `<p>${req.days || 0} days · ${req.travelers || 1} traveler(s) · ₹${(req.budget_inr || 0).toLocaleString("en-IN")} budget</p>`;
+
+  if (res.summary) html += `<p><em>${res.summary}</em></p>`;
+
+  if (res.budget_breakdown) {
+    const b = res.budget_breakdown;
+    html += `<h3>Budget Breakdown</h3><ul>`;
+    html += `<li>Transport: ₹${b.transport_inr.toLocaleString("en-IN")}</li>`;
+    html += `<li>Accommodation: ₹${b.accommodation_inr.toLocaleString("en-IN")}</li>`;
+    html += `<li>Food: ₹${b.food_inr.toLocaleString("en-IN")}</li>`;
+    html += `<li>Activities: ₹${b.activities_inr.toLocaleString("en-IN")}</li>`;
+    html += `<li>Misc: ₹${b.misc_inr.toLocaleString("en-IN")}</li>`;
+    html += `<li><strong>Total: ₹${b.total_inr.toLocaleString("en-IN")}</strong></li></ul>`;
+  }
+
+  if (res.hotel_options?.length) {
+    html += `<h3>Hotels</h3><ul>`;
+    res.hotel_options.slice(0, 3).forEach((h: any) => {
+      html += `<li><strong>${h.name}</strong> — ₹${h.price_per_night_inr}/night</li>`;
+    });
+    html += `</ul>`;
+  }
+
+  if (res.transport_options?.length) {
+    html += `<h3>Transport</h3><ul>`;
+    res.transport_options.slice(0, 3).forEach((t: any) => {
+      html += `<li><strong>${t.type}</strong> — ${t.operator} — ₹${t.price_inr}</li>`;
+    });
+    html += `</ul>`;
+  }
+
+  if (res.itinerary?.length) {
+    html += `<h3>Itinerary</h3>`;
+    res.itinerary.forEach((day: any) => {
+      html += `<h4>Day ${day.day}: ${day.title}</h4><ul>`;
+      if (day.activities?.length) {
+        day.activities.forEach((act: any) => {
+          const cost = act.cost_inr > 0 ? ` (₹${act.cost_inr})` : "";
+          html += `<li>${act.time ? act.time + " — " : ""}${act.activity || act.name || ""}${cost}</li>`;
+        });
+      }
+      if (day.meals?.length) {
+        day.meals.forEach((meal: any) => {
+          html += `<li>🍽️ ${meal.type}: ${meal.suggestion || meal.name || ""}</li>`;
+        });
+      }
+      html += `</ul>`;
+    });
+  }
+
+  html += `<hr><p><small>Planned with PariKrama — AI Travel Planner</small></p>`;
+  return html;
+}
+
+function ShareModal({
+  tripId,
+  trip,
+  onClose,
+}: {
+  tripId: string;
+  trip: TripDetail;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const shareUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/dashboard/trips/${tripId}`
+    : "";
+
+  const itineraryText = formatItineraryText(trip);
+  const destination = trip.request?.destination || "Trip";
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      prompt("Copy this link:", shareUrl);
+    }
+  }, [shareUrl]);
+
+  const handleWhatsApp = useCallback(() => {
+    const msg = `${itineraryText}\n\nView full plan: ${shareUrl}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  }, [itineraryText, shareUrl]);
+
+  const handleEmail = useCallback(() => {
+    const subject = `${trip.request?.origin || ""} → ${destination} Trip Plan`;
+    const body = `${itineraryText}\n\nView full plan: ${shareUrl}`;
+    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank");
+  }, [itineraryText, shareUrl, destination, trip]);
+
+  const shareOptions = [
+    {
+      label: "Copy Link",
+      icon: copied ? Check : Copy,
+      color: "text-emerald-400 bg-emerald-400/10",
+      action: handleCopy,
+      desc: "Copy trip link to clipboard",
+    },
+    {
+      label: "WhatsApp",
+      icon: MessageCircle,
+      color: "text-green-400 bg-green-400/10",
+      action: handleWhatsApp,
+      desc: "Send full itinerary via WhatsApp",
+    },
+    {
+      label: "Email",
+      icon: Mail,
+      color: "text-blue-400 bg-blue-400/10",
+      action: handleEmail,
+      desc: "Send full itinerary via email",
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#0a0a0f] p-6 shadow-2xl anim-slide-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-semibold text-lg">Share Trip</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{destination}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Itinerary Preview */}
+        <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/5 max-h-32 overflow-y-auto">
+          <p className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-line">
+            {itineraryText.slice(0, 300)}{itineraryText.length > 300 ? "..." : ""}
+          </p>
+        </div>
+
+        {/* Share Options */}
+        <div className="space-y-2">
+          {shareOptions.map((opt) => (
+            <button
+              key={opt.label}
+              onClick={opt.action}
+              className="w-full flex items-center gap-3 p-3 rounded-xl glass border border-white/5 hover:border-white/10 transition-all text-left group"
+            >
+              <div className={`p-2 rounded-lg ${opt.color}`}>
+                <opt.icon className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium block">{opt.label}</span>
+                <span className="text-[11px] text-muted-foreground">{opt.desc}</span>
+              </div>
+              {opt.label === "Copy Link" && copied && (
+                <span className="text-xs text-emerald-400">Copied!</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Link Preview */}
+        <div className="mt-4 p-3 rounded-xl bg-white/5 border border-white/5">
+          <p className="text-xs text-muted-foreground truncate">{shareUrl}</p>
+        </div>
+      </div>
     </div>
   );
 }
