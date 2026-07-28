@@ -160,3 +160,4 @@ async def delete_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found or you do not have permission to delete it.",
         )
+

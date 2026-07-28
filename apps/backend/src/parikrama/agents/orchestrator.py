@@ -3,7 +3,7 @@ OrchestratorAgent — the entry point of the PariKrama multi-agent pipeline.
 
 Responsibilities:
 1. Parse natural language input (English / Hindi / Hinglish) → TripRequest
-2. Validate: days 1-30, budget >= Rs.1,000, origin + destination present
+2. Validate: days 1-15, budget >= Rs.1,000, origin + destination present
 3. Enrich initial TripPlanningState for downstream agents
 
 This is a graph NODE function (not a self-contained graph like Phase 3 agents).
@@ -201,8 +201,8 @@ def _validate_trip_request(req: TripRequest) -> None:
         errors.append("Could not determine the destination")
 
     days = req.get("days", 0)
-    if not (1 <= days <= 30):
-        errors.append(f"Trip duration must be 1-30 days (got {days})")
+    if not (1 <= days <= 15):
+        errors.append(f"Trip duration must be 1-15 days (got {days})")
 
     budget = req.get("budget_inr", 0)
     if budget < 1000:

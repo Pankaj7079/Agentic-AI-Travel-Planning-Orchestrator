@@ -1,0 +1,56 @@
+# Environment and secrets
+.env
+.env.*
+*.env
+*.env.*
+secrets/
+**/secrets/
+**/firebase-credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.sqlite
+*.db
+*.db-journal
+
+# Local runtime and logs
+logs/
+**/logs/
+*.log
+*.out
+*.pid
+.tmp/
+.temp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Node / frontend
+node_modules/
+.next/
+.out/
+coverage/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
